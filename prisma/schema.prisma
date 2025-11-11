@@ -1,0 +1,46 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql" // or "mysql", "sqlite", etc.
+  url      = env("DATABASE_URL")
+}
+
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  createdAt DateTime @default(now())
+
+  qrCodes   QrCode[]
+}
+
+model QrCode {
+  id              String    @id @default(cuid())
+  name            String?
+  slug            String    @unique // used in /scan/:slug
+  originalUrl     String
+  dynamic         Boolean   @default(false)
+  passwordHash    String?   // password-protected on scan
+  expiresAt       DateTime?
+  errorCorrection String     @default("M")
+  format          String     @default("PNG") // PNG | SVG
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  ownerId String
+  owner   User      @relation(fields: [ownerId], references: [id])
+
+  scans   Scan[]
+}
+
+model Scan {
+  id        String   @id @default(cuid())
+  qrId      String
+  qr        QrCode   @relation(fields: [qrId], references: [id])
+  ip        String?
+  ua        String?
+  createdAt DateTime @default(now())
+}
