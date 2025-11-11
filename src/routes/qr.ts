@@ -1,9 +1,9 @@
 import { Router } from 'express';
-import { prisma } from '../prisma';
-import { auth, type AuthReq } from '../middleware/auth';
+import { prisma } from '../prisma.js';
+import { auth, type AuthReq } from '../middleware/auth.js';
 import { nanoid } from 'nanoid';
-import { hashPassword } from '../lib/hash';
-import { makePngDataUrl, makeSvgDataUrl } from '../lib/qrcode';
+import { hashPassword } from '../lib/hash.js';
+import { makePngDataUrl, makeSvgDataUrl } from '../lib/qrcode.js';
 
 const router = Router();
 

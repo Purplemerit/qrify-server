@@ -1,6 +1,6 @@
 import { Router } from 'express';
-import { prisma } from '../prisma';
-import { comparePassword } from '../lib/hash';
+import { prisma } from '../prisma.js';
+import { comparePassword } from '../lib/hash.js';
 
 const router = Router();
 

@@ -1,7 +1,7 @@
 import { Router } from 'express';
-import { prisma } from '../prisma';
-import { hashPassword, comparePassword } from '../lib/hash';
-import { signJwt } from '../lib/jwt';
+import { prisma } from '../prisma.js';
+import { hashPassword, comparePassword } from '../lib/hash.js';
+import { signJwt } from '../lib/jwt.js';
 
 const router = Router();
 

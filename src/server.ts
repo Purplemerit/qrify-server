@@ -1,10 +1,10 @@
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import { env } from './config/env';
-import authRoutes from './routes/auth';
-import qrRoutes from './routes/qr';
-import scanRoutes from './routes/scan';
+import { env } from './config/env.js';
+import authRoutes from './routes/auth.js';
+import qrRoutes from './routes/qr.js';
+import scanRoutes from './routes/scan.js';
 
 const app = express();
 

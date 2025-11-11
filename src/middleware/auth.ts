@@ -1,5 +1,5 @@
 import { type Request, type Response, type NextFunction } from 'express';
-import { verifyJwt } from '../lib/jwt';
+import { verifyJwt } from '../lib/jwt.js';
 
 export type AuthReq = Request & {
   user?: { id: string; email: string };

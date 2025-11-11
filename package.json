@@ -20,7 +20,11 @@
     "qrcode": "^1.5.3"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.5",
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^24.1.0",
+    "@types/qrcode": "^1.5.6",
     "prisma": "^5.16.1",
     "tsx": "^4.7.1",
     "typescript": "^5.4.5"
