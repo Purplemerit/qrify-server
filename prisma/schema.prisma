@@ -9,12 +9,33 @@ datasource db {
 
 
 model User {
+  id                        String    @id @default(cuid())
+  email                     String    @unique
+  password                  String
+  emailVerified             Boolean   @default(false)
+  emailVerificationToken    String?   @unique
+  emailVerificationExpires  DateTime?
+  passwordResetToken        String?   @unique
+  passwordResetExpires      DateTime?
+  newEmail                  String?
+  newEmailToken             String?   @unique
+  newEmailTokenExpires      DateTime?
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
+
+  qrCodes      QrCode[]
+  refreshTokens RefreshToken[]
+}
+
+model RefreshToken {
   id        String   @id @default(cuid())
-  email     String   @unique
-  password  String
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
   createdAt DateTime @default(now())
 
-  qrCodes   QrCode[]
+  @@index([userId])
 }
 
 model QrCode {
