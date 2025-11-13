@@ -13,7 +13,7 @@ import {
 
 const router = Router();
 
-// POST /auth/signup - User registration with email verification
+// POST /auth/signup - User registration with automatic login
 router.post('/signup', async (req, res) => {
   try {
     const { email, password } = req.body ?? {};
@@ -38,23 +38,34 @@ router.post('/signup', async (req, res) => {
     }
 
     const hashed = await hashPassword(password);
-    const verificationToken = generateToken();
-    const verificationExpiry = generateTokenExpiry(24); // 24 hours
 
     const user = await prisma.user.create({
       data: {
         email,
         password: hashed,
-        emailVerificationToken: verificationToken,
-        emailVerificationExpires: verificationExpiry,
+        emailVerified: true, // Skip email verification for direct login
       },
     });
 
-    // Send verification email
-    await sendVerificationEmail(email, verificationToken);
+    // Generate access token and refresh token for immediate login
+    const accessToken = signJwt({ id: user.id, email: user.email });
+    const refreshToken = generateToken();
+    const refreshTokenExpiry = new Date();
+    refreshTokenExpiry.setDate(refreshTokenExpiry.getDate() + 30); // 30 days
+
+    // Store refresh token in database
+    await prisma.refreshToken.create({
+      data: {
+        token: refreshToken,
+        userId: user.id,
+        expiresAt: refreshTokenExpiry,
+      },
+    });
 
     res.status(201).json({
-      message: 'Account created successfully. Please check your email to verify your account.',
+      message: 'Account created successfully',
+      accessToken,
+      refreshToken,
       user: { id: user.id, email: user.email, emailVerified: user.emailVerified },
     });
   } catch (error) {
