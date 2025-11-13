@@ -20,6 +20,7 @@ model User {
   newEmail                  String?
   newEmailToken             String?   @unique
   newEmailTokenExpires      DateTime?
+  role                      String    @default("admin")
   createdAt                 DateTime  @default(now())
   updatedAt                 DateTime  @updatedAt
 
