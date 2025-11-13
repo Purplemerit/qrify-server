@@ -66,7 +66,7 @@ router.post('/signup', async (req, res) => {
       message: 'Account created successfully',
       accessToken,
       refreshToken,
-      user: { id: user.id, email: user.email, emailVerified: user.emailVerified },
+      user: { id: user.id, email: user.email, emailVerified: user.emailVerified, role: user.role },
     });
   } catch (error) {
     console.error('Signup error:', error);
@@ -114,6 +114,7 @@ router.post('/login', async (req, res) => {
         id: user.id,
         email: user.email,
         emailVerified: user.emailVerified,
+        role: user.role,
       },
     });
   } catch (error) {
@@ -355,6 +356,7 @@ router.get('/me', auth, async (req: AuthReq, res: Response) => {
         id: true,
         email: true,
         emailVerified: true,
+        role: true,
         createdAt: true,
         updatedAt: true,
       },
