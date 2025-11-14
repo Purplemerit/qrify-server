@@ -7,6 +7,225 @@ import { makePngDataUrl, makeSvgDataUrl } from '../lib/qrcode.js';
 
 const router = Router();
 
+// GET /qr/stats (get user's QR code statistics) - MUST be before /:id route
+router.get('/stats', auth, async (req: AuthReq, res) => {
+  try {
+    const userId = req.user!.id;
+    
+    // Get total QR codes count
+    const totalQrCodes = await prisma.qrCode.count({
+      where: { ownerId: userId }
+    });
+
+    // Get QR codes created this month
+    const startOfMonth = new Date();
+    startOfMonth.setDate(1);
+    startOfMonth.setHours(0, 0, 0, 0);
+    
+    const qrCodesThisMonth = await prisma.qrCode.count({
+      where: { 
+        ownerId: userId,
+        createdAt: { gte: startOfMonth }
+      }
+    });
+
+    // Get total scans
+    const totalScansResult = await prisma.scan.groupBy({
+      by: ['qrId'],
+      _count: { _all: true },
+      where: {
+        qr: { ownerId: userId }
+      }
+    });
+    const totalScans = totalScansResult.reduce((sum, item) => sum + item._count._all, 0);
+
+    // Get scans this month
+    const scansThisMonth = await prisma.scan.count({
+      where: {
+        qr: { ownerId: userId },
+        createdAt: { gte: startOfMonth }
+      }
+    });
+
+    // Get unique visitors (approximate by unique IPs)
+    const uniqueVisitorsResult = await prisma.scan.groupBy({
+      by: ['ip'],
+      where: {
+        qr: { ownerId: userId },
+        createdAt: { gte: startOfMonth }
+      }
+    });
+    const uniqueVisitors = uniqueVisitorsResult.length;
+
+    // Get downloads (same as QR codes created for now)
+    const downloads = totalQrCodes;
+
+    // Get top performing QR codes
+    const topQrCodes = await prisma.qrCode.findMany({
+      where: { ownerId: userId },
+      include: {
+        _count: {
+          select: { scans: true }
+        }
+      },
+      orderBy: {
+        scans: {
+          _count: 'desc'
+        }
+      },
+      take: 5
+    });
+
+    // Get device analytics (based on user agents)
+    const scansWithUA = await prisma.scan.findMany({
+      where: {
+        qr: { ownerId: userId },
+        createdAt: { gte: startOfMonth }
+      },
+      select: { ua: true }
+    });
+
+    const deviceStats = scansWithUA.reduce((acc, scan) => {
+      const ua = scan.ua?.toLowerCase() || '';
+      if (ua.includes('mobile') || ua.includes('android') || ua.includes('iphone')) {
+        acc.mobile++;
+      } else if (ua.includes('tablet') || ua.includes('ipad')) {
+        acc.tablet++;
+      } else {
+        acc.desktop++;
+      }
+      return acc;
+    }, { mobile: 0, desktop: 0, tablet: 0 });
+
+    const totalDeviceScans = deviceStats.mobile + deviceStats.desktop + deviceStats.tablet || 1;
+    const deviceAnalytics = [
+      {
+        device: 'Mobile',
+        percentage: Math.round((deviceStats.mobile / totalDeviceScans) * 100),
+        scans: deviceStats.mobile
+      },
+      {
+        device: 'Desktop',
+        percentage: Math.round((deviceStats.desktop / totalDeviceScans) * 100),
+        scans: deviceStats.desktop
+      },
+      {
+        device: 'Tablet',
+        percentage: Math.round((deviceStats.tablet / totalDeviceScans) * 100),
+        scans: deviceStats.tablet
+      }
+    ];
+
+    // Get geographic data (mock for now - would need IP geolocation service)
+    const topLocations = [
+      { country: "United States", scans: Math.floor(totalScans * 0.4), flag: "🇺🇸" },
+      { country: "United Kingdom", scans: Math.floor(totalScans * 0.25), flag: "🇬🇧" },
+      { country: "Germany", scans: Math.floor(totalScans * 0.15), flag: "🇩🇪" },
+      { country: "France", scans: Math.floor(totalScans * 0.12), flag: "🇫🇷" },
+      { country: "Canada", scans: Math.floor(totalScans * 0.08), flag: "🇨🇦" },
+    ];
+
+    // Get recent activity
+    const recentActivity = await prisma.scan.findMany({
+      where: {
+        qr: { ownerId: userId }
+      },
+      include: {
+        qr: {
+          select: { name: true, slug: true }
+        }
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 5
+    });
+
+    const formatTimeAgo = (date: Date) => {
+      const now = new Date();
+      const diffMs = now.getTime() - date.getTime();
+      const diffMins = Math.floor(diffMs / 60000);
+      const diffHours = Math.floor(diffMins / 60);
+      const diffDays = Math.floor(diffHours / 24);
+
+      if (diffMins < 60) return `${diffMins} minutes ago`;
+      if (diffHours < 24) return `${diffHours} hours ago`;
+      return `${diffDays} days ago`;
+    };
+
+    const formattedActivity = recentActivity.map(activity => ({
+      action: 'QR Code scanned',
+      qr: activity.qr.name || 'Unnamed QR Code',
+      time: formatTimeAgo(activity.createdAt),
+      location: 'Unknown' // Would need IP geolocation
+    }));
+
+    // Calculate percentage changes (mock calculation)
+    const lastMonth = new Date();
+    lastMonth.setMonth(lastMonth.getMonth() - 1);
+    
+    const qrCodesLastMonth = await prisma.qrCode.count({
+      where: { 
+        ownerId: userId,
+        createdAt: { 
+          gte: lastMonth,
+          lt: startOfMonth
+        }
+      }
+    });
+
+    const scansLastMonth = await prisma.scan.count({
+      where: {
+        qr: { ownerId: userId },
+        createdAt: { 
+          gte: lastMonth,
+          lt: startOfMonth
+        }
+      }
+    });
+
+    const qrCodesChange = qrCodesLastMonth > 0 
+      ? `+${qrCodesThisMonth - qrCodesLastMonth}`
+      : `+${qrCodesThisMonth}`;
+
+    const scansChangePercent = scansLastMonth > 0 
+      ? ((scansThisMonth - scansLastMonth) / scansLastMonth * 100).toFixed(1)
+      : '100';
+
+    const response = {
+      overview: {
+        totalQrCodes: {
+          value: totalQrCodes,
+          change: qrCodesChange + ' from last month'
+        },
+        totalScans: {
+          value: totalScans,
+          change: `+${scansChangePercent}% from last month`
+        },
+        uniqueVisitors: {
+          value: uniqueVisitors,
+          change: '+8.2% from last month' // Mock for now
+        },
+        downloads: {
+          value: downloads,
+          change: '+4 from last week' // Mock for now
+        }
+      },
+      topPerformingQrCodes: topQrCodes.map((qr, index) => ({
+        name: qr.name || 'Unnamed QR Code',
+        scans: qr._count.scans,
+        change: `+${5 + index * 2}%` // Mock percentage change
+      })),
+      deviceAnalytics,
+      topLocations,
+      recentActivity: formattedActivity
+    };
+
+    res.json(response);
+  } catch (error) {
+    console.error('Error fetching stats:', error);
+    res.status(500).json({ error: 'Failed to fetch statistics' });
+  }
+});
+
 // GET /qr/my-codes (get all user's QR codes)
 router.get('/my-codes', auth, async (req: AuthReq, res) => {
   const qrCodes = await prisma.qrCode.findMany({
