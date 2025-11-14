@@ -6,12 +6,20 @@ export type AuthReq = Request & {
 };
 
 export function auth(req: AuthReq, res: Response, next: NextFunction) {
-  const header = req.headers['authorization'];
-  if (!header?.startsWith('Bearer ')) {
+  // Try to get token from cookie first, then fallback to Authorization header
+  let token = req.cookies?.accessToken;
+  
+  if (!token) {
+    const header = req.headers['authorization'];
+    if (header?.startsWith('Bearer ')) {
+      token = header.slice(7);
+    }
+  }
+
+  if (!token) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  const token = header.slice(7);
   try {
     const payload = verifyJwt<{ id: string; email: string }>(token);
     req.user = payload;
