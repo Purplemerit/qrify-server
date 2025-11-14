@@ -1,0 +1,5 @@
+-- AlterTable
+ALTER TABLE "QrCode" ADD COLUMN     "designFrame" INTEGER DEFAULT 1,
+ADD COLUMN     "designLevel" INTEGER DEFAULT 2,
+ADD COLUMN     "designLogo" INTEGER DEFAULT 0,
+ADD COLUMN     "designShape" INTEGER DEFAULT 1;
