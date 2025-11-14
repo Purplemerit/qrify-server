@@ -7,6 +7,43 @@ import { makePngDataUrl, makeSvgDataUrl } from '../lib/qrcode.js';
 
 const router = Router();
 
+// GET /qr/my-codes (get all user's QR codes)
+router.get('/my-codes', auth, async (req: AuthReq, res) => {
+  const qrCodes = await prisma.qrCode.findMany({
+    where: { ownerId: req.user!.id },
+    include: {
+      _count: {
+        select: { scans: true }
+      }
+    },
+    orderBy: { createdAt: 'desc' }
+  });
+
+  // Transform the data to match frontend expectations
+  const transformedQrCodes = qrCodes.map(qr => ({
+    id: qr.id,
+    title: qr.name || 'Unnamed QR Code',
+    name: qr.name,
+    type: qr.dynamic ? 'Dynamic' : 'Static',
+    status: qr.expiresAt && qr.expiresAt < new Date() ? 'Inactive' : 'Active',
+    data: qr.originalUrl,
+    scans: qr._count.scans,
+    created_at: qr.createdAt,
+    slug: qr.slug,
+    dynamic: qr.dynamic,
+    format: qr.format,
+    errorCorrection: qr.errorCorrection,
+    designOptions: {
+      frame: qr.designFrame || 1,
+      shape: qr.designShape || 1,
+      logo: qr.designLogo || 0,
+      level: qr.designLevel || 2
+    }
+  }));
+
+  res.json(transformedQrCodes);
+});
+
 // POST /qr/url  (create)
 router.post('/url', auth, async (req: AuthReq, res) => {
   const {
@@ -49,18 +86,41 @@ router.get('/:id', auth, async (req: AuthReq, res) => {
   res.json(qr);
 });
 
-// PUT /qr/:id (update url if dynamic)
+// PUT /qr/:id (update url if dynamic, or design options)
 router.put('/:id', auth, async (req: AuthReq, res) => {
-  const { url } = req.body ?? {};
+  const { url, designOptions, status } = req.body ?? {};
   const qr = await prisma.qrCode.findFirst({
     where: { id: req.params.id, ownerId: req.user!.id }
   });
   if (!qr) return res.status(404).json({ error: 'not found' });
-  if (!qr.dynamic) return res.status(400).json({ error: 'not dynamic' });
+
+  // Prepare update data
+  const updateData: any = {};
+  
+  // Update URL only for dynamic QR codes
+  if (url !== undefined) {
+    if (!qr.dynamic) return res.status(400).json({ error: 'not dynamic' });
+    updateData.originalUrl = url;
+  }
+
+  // Update design options if provided
+  if (designOptions) {
+    if (designOptions.frame !== undefined) updateData.designFrame = designOptions.frame;
+    if (designOptions.shape !== undefined) updateData.designShape = designOptions.shape;
+    if (designOptions.logo !== undefined) updateData.designLogo = designOptions.logo;
+    if (designOptions.level !== undefined) updateData.designLevel = designOptions.level;
+  }
+
+  // Update expiration based on status
+  if (status === 'inactive') {
+    updateData.expiresAt = new Date(); // Set to current time to make it inactive
+  } else if (status === 'active') {
+    updateData.expiresAt = null; // Remove expiration to make it active
+  }
 
   const updated = await prisma.qrCode.update({
     where: { id: qr.id },
-    data: { originalUrl: url ?? qr.originalUrl }
+    data: updateData
   });
 
   res.json(updated);
