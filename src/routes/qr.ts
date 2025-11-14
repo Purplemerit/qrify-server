@@ -86,9 +86,9 @@ router.get('/:id', auth, async (req: AuthReq, res) => {
   res.json(qr);
 });
 
-// PUT /qr/:id (update url if dynamic, or design options)
+// PUT /qr/:id (update url if dynamic, or design options, or name)
 router.put('/:id', auth, async (req: AuthReq, res) => {
-  const { url, designOptions, status } = req.body ?? {};
+  const { url, designOptions, status, name } = req.body ?? {};
   const qr = await prisma.qrCode.findFirst({
     where: { id: req.params.id, ownerId: req.user!.id }
   });
@@ -101,6 +101,11 @@ router.put('/:id', auth, async (req: AuthReq, res) => {
   if (url !== undefined) {
     if (!qr.dynamic) return res.status(400).json({ error: 'not dynamic' });
     updateData.originalUrl = url;
+  }
+
+  // Update name if provided
+  if (name !== undefined) {
+    updateData.name = name;
   }
 
   // Update design options if provided
@@ -133,6 +138,12 @@ router.delete('/:id', auth, async (req: AuthReq, res) => {
   });
   if (!qr) return res.status(404).json({ error: 'not found' });
 
+  // Delete associated scans first to avoid foreign key constraint
+  await prisma.scan.deleteMany({ 
+    where: { qrId: qr.id } 
+  });
+
+  // Then delete the QR code
   await prisma.qrCode.delete({ where: { id: qr.id } });
   res.json({ ok: true });
 });
