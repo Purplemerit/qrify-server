@@ -71,5 +71,10 @@ model Scan {
   qr        QrCode   @relation(fields: [qrId], references: [id])
   ip        String?
   ua        String?
+  country   String?  // Country name
+  city      String?  // City name
+  region    String?  // State/Region
+  latitude  Float?   // Latitude
+  longitude Float?   // Longitude
   createdAt DateTime @default(now())
 }

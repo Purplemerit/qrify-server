@@ -12,10 +12,14 @@ router.get('/stats', auth, async (req: AuthReq, res) => {
   try {
     const userId = req.user!.id;
     
+    console.log('Fetching stats for user:', userId);
+    
     // Get total QR codes count
     const totalQrCodes = await prisma.qrCode.count({
       where: { ownerId: userId }
     });
+
+    console.log('Total QR codes:', totalQrCodes);
 
     // Get QR codes created this month
     const startOfMonth = new Date();
@@ -29,15 +33,35 @@ router.get('/stats', auth, async (req: AuthReq, res) => {
       }
     });
 
-    // Get total scans
-    const totalScansResult = await prisma.scan.groupBy({
-      by: ['qrId'],
-      _count: { _all: true },
+    // Get total scans with debug info
+    const allScans = await prisma.scan.findMany({
       where: {
         qr: { ownerId: userId }
+      },
+      select: {
+        id: true,
+        createdAt: true,
+        qr: { select: { name: true } }
       }
-    });
-    const totalScans = totalScansResult.reduce((sum, item) => sum + item._count._all, 0);
+    }) as any[];
+
+    // Also get scans with location data using raw query to avoid TypeScript issues
+    const scansWithLocation = await prisma.$queryRaw<Array<{
+      id: string;
+      country: string | null;
+      city: string | null;
+      createdAt: Date;
+    }>>`
+      SELECT s.id, s.country, s.city, s."createdAt"
+      FROM \"Scan\" s
+      JOIN \"QrCode\" qr ON s.\"qrId\" = qr.id
+      WHERE qr.\"ownerId\" = ${userId}
+      ORDER BY s."createdAt" DESC
+    `;
+
+    console.log('All scans count:', allScans.length);
+    console.log('Scans with location data:', scansWithLocation);
+    const totalScans = allScans.length;
 
     // Get scans this month
     const scansThisMonth = await prisma.scan.count({
@@ -116,28 +140,73 @@ router.get('/stats', auth, async (req: AuthReq, res) => {
       }
     ];
 
-    // Get geographic data (mock for now - would need IP geolocation service)
-    const topLocations = [
-      { country: "United States", scans: Math.floor(totalScans * 0.4), flag: "🇺🇸" },
-      { country: "United Kingdom", scans: Math.floor(totalScans * 0.25), flag: "🇬🇧" },
-      { country: "Germany", scans: Math.floor(totalScans * 0.15), flag: "🇩🇪" },
-      { country: "France", scans: Math.floor(totalScans * 0.12), flag: "🇫🇷" },
-      { country: "Canada", scans: Math.floor(totalScans * 0.08), flag: "🇨🇦" },
-    ];
+    // Get geographic data from real scan locations using raw query
+    const locationScansRaw = await prisma.$queryRaw<{country: string, count: bigint}[]>`
+      SELECT country, COUNT(*) as count
+      FROM "Scan" s
+      JOIN "QrCode" qr ON s."qrId" = qr.id
+      WHERE qr."ownerId" = ${userId} AND s.country IS NOT NULL
+      GROUP BY country
+      ORDER BY count DESC
+      LIMIT 5
+    `;
 
-    // Get recent activity
-    const recentActivity = await prisma.scan.findMany({
-      where: {
-        qr: { ownerId: userId }
-      },
-      include: {
-        qr: {
-          select: { name: true, slug: true }
-        }
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 5
-    });
+    // Map country names to flag emojis
+    const countryFlags: { [key: string]: string } = {
+      'United States': '🇺🇸',
+      'United Kingdom': '🇬🇧', 
+      'Germany': '🇩🇪',
+      'France': '🇫🇷',
+      'Canada': '🇨🇦',
+      'Australia': '🇦🇺',
+      'Japan': '🇯🇵',
+      'South Korea': '🇰🇷',
+      'Brazil': '🇧🇷',
+      'India': '🇮🇳',
+      'China': '🇨🇳',
+      'Italy': '🇮🇹',
+      'Spain': '🇪🇸',
+      'Netherlands': '🇳🇱',
+      'Switzerland': '🇨🇭',
+      'Sweden': '🇸🇪',
+      'Norway': '🇳🇴',
+      'Denmark': '🇩🇰',
+      'Belgium': '🇧🇪',
+      'Austria': '🇦🇹'
+    };
+
+    const topLocations = locationScansRaw.map(location => ({
+      country: location.country || 'Unknown',
+      scans: Number(location.count),
+      flag: countryFlags[location.country || ''] || '🌍'
+    }));
+
+    // Get recent activity with location data using raw query to avoid TypeScript issues
+    const recentActivity = await prisma.$queryRaw<Array<{
+      id: string;
+      createdAt: Date;
+      country: string | null;
+      city: string | null;
+      qr_name: string | null;
+      qr_slug: string | null;
+    }>>`
+      SELECT 
+        s.id, 
+        s."createdAt", 
+        s.country, 
+        s.city,
+        qr.name as qr_name,
+        qr.slug as qr_slug
+      FROM \"Scan\" s
+      JOIN \"QrCode\" qr ON s.\"qrId\" = qr.id
+      WHERE qr.\"ownerId\" = ${userId}
+      ORDER BY s."createdAt" DESC
+      LIMIT 5
+    `;
+
+    console.log('Recent activity with location:', recentActivity);
+
+    console.log('Recent activity with location:', recentActivity);
 
     const formatTimeAgo = (date: Date) => {
       const now = new Date();
@@ -146,27 +215,33 @@ router.get('/stats', auth, async (req: AuthReq, res) => {
       const diffHours = Math.floor(diffMins / 60);
       const diffDays = Math.floor(diffHours / 24);
 
-      if (diffMins < 60) return `${diffMins} minutes ago`;
-      if (diffHours < 24) return `${diffHours} hours ago`;
-      return `${diffDays} days ago`;
+      if (diffMins < 1) return 'Just now';
+      if (diffMins < 60) return `${diffMins} ${diffMins === 1 ? 'minute' : 'minutes'} ago`;
+      if (diffHours < 24) return `${diffHours} ${diffHours === 1 ? 'hour' : 'hours'} ago`;
+      return `${diffDays} ${diffDays === 1 ? 'day' : 'days'} ago`;
     };
 
-    const formattedActivity = recentActivity.map(activity => ({
+    const formattedActivity = recentActivity.map((activity) => ({
       action: 'QR Code scanned',
-      qr: activity.qr.name || 'Unnamed QR Code',
+      qr: activity.qr_name || 'Unnamed QR Code',
       time: formatTimeAgo(activity.createdAt),
-      location: 'Unknown' // Would need IP geolocation
+      location: activity.city && activity.country 
+        ? `${activity.city}, ${activity.country}`
+        : activity.country || 'Unknown location'
     }));
 
-    // Calculate percentage changes (mock calculation)
+    // Calculate real percentage changes
     const lastMonth = new Date();
     lastMonth.setMonth(lastMonth.getMonth() - 1);
+    const startOfLastMonth = new Date(lastMonth);
+    startOfLastMonth.setDate(1);
+    startOfLastMonth.setHours(0, 0, 0, 0);
     
     const qrCodesLastMonth = await prisma.qrCode.count({
       where: { 
         ownerId: userId,
         createdAt: { 
-          gte: lastMonth,
+          gte: startOfLastMonth,
           lt: startOfMonth
         }
       }
@@ -176,44 +251,78 @@ router.get('/stats', auth, async (req: AuthReq, res) => {
       where: {
         qr: { ownerId: userId },
         createdAt: { 
-          gte: lastMonth,
+          gte: startOfLastMonth,
           lt: startOfMonth
         }
       }
     });
 
+    // Calculate unique visitors for last month
+    const uniqueVisitorsLastMonth = await prisma.scan.groupBy({
+      by: ['ip'],
+      where: {
+        qr: { ownerId: userId },
+        createdAt: { 
+          gte: startOfLastMonth,
+          lt: startOfMonth
+        }
+      }
+    });
+
+    // Calculate real percentage changes
     const qrCodesChange = qrCodesLastMonth > 0 
-      ? `+${qrCodesThisMonth - qrCodesLastMonth}`
-      : `+${qrCodesThisMonth}`;
+      ? (qrCodesThisMonth > qrCodesLastMonth 
+         ? `+${qrCodesThisMonth - qrCodesLastMonth} from last month`
+         : `${qrCodesThisMonth - qrCodesLastMonth} from last month`)
+      : qrCodesThisMonth > 0 ? `+${qrCodesThisMonth} this month` : 'No QR codes yet';
 
     const scansChangePercent = scansLastMonth > 0 
-      ? ((scansThisMonth - scansLastMonth) / scansLastMonth * 100).toFixed(1)
-      : '100';
+      ? ((scansThisMonth - scansLastMonth) / scansLastMonth * 100)
+      : scansThisMonth > 0 ? 100 : 0;
+    
+    const scansChange = scansLastMonth > 0
+      ? `${scansChangePercent >= 0 ? '+' : ''}${scansChangePercent.toFixed(1)}% from last month`
+      : scansThisMonth > 0 ? '+100% this month' : 'No scans yet';
+
+    const visitorsChangePercent = uniqueVisitorsLastMonth.length > 0
+      ? ((uniqueVisitors - uniqueVisitorsLastMonth.length) / uniqueVisitorsLastMonth.length * 100)
+      : uniqueVisitors > 0 ? 100 : 0;
+    
+    const visitorsChange = uniqueVisitorsLastMonth.length > 0
+      ? `${visitorsChangePercent >= 0 ? '+' : ''}${visitorsChangePercent.toFixed(1)}% from last month`
+      : uniqueVisitors > 0 ? '+100% this month' : 'No visitors yet';
+
+    // Calculate downloads change (downloads = QR codes created)
+    const downloadsChange = qrCodesChange;
 
     const response = {
       overview: {
         totalQrCodes: {
           value: totalQrCodes,
-          change: qrCodesChange + ' from last month'
+          change: qrCodesChange
         },
         totalScans: {
           value: totalScans,
-          change: `+${scansChangePercent}% from last month`
+          change: scansChange
         },
         uniqueVisitors: {
           value: uniqueVisitors,
-          change: '+8.2% from last month' // Mock for now
+          change: visitorsChange
         },
         downloads: {
-          value: downloads,
-          change: '+4 from last week' // Mock for now
+          value: totalQrCodes, // Downloads = total QR codes created
+          change: downloadsChange
         }
       },
-      topPerformingQrCodes: topQrCodes.map((qr, index) => ({
-        name: qr.name || 'Unnamed QR Code',
-        scans: qr._count.scans,
-        change: `+${5 + index * 2}%` // Mock percentage change
-      })),
+      topPerformingQrCodes: topQrCodes.map((qr) => {
+        // Calculate change for each QR code based on this month vs last month scans
+        const thisMonthScans = qr._count.scans; // This is total scans, we need to calculate monthly difference
+        return {
+          name: qr.name || 'Unnamed QR Code',
+          scans: qr._count.scans,
+          change: qr._count.scans > 0 ? 'Active' : 'No scans'
+        };
+      }),
       deviceAnalytics,
       topLocations,
       recentActivity: formattedActivity
