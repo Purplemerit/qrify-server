@@ -33,12 +33,12 @@ router.get('/my-codes', auth, async (req: AuthReq, res) => {
     dynamic: qr.dynamic,
     format: qr.format,
     errorCorrection: qr.errorCorrection,
-    designOptions: {
+    designOptions: (qr.designFrame || qr.designShape || qr.designLogo || qr.designLevel !== 2) ? {
       frame: qr.designFrame || 1,
       shape: qr.designShape || 1,
       logo: qr.designLogo || 0,
       level: qr.designLevel || 2
-    }
+    } : null
   }));
 
   res.json(transformedQrCodes);
@@ -88,6 +88,7 @@ router.get('/:id', auth, async (req: AuthReq, res) => {
 
 // PUT /qr/:id (update url if dynamic, or design options, or name)
 router.put('/:id', auth, async (req: AuthReq, res) => {
+  console.log('PUT request body:', req.body);
   const { url, designOptions, status, name } = req.body ?? {};
   const qr = await prisma.qrCode.findFirst({
     where: { id: req.params.id, ownerId: req.user!.id }
@@ -110,6 +111,7 @@ router.put('/:id', auth, async (req: AuthReq, res) => {
 
   // Update design options if provided
   if (designOptions) {
+    console.log('Updating design options:', designOptions);
     if (designOptions.frame !== undefined) updateData.designFrame = designOptions.frame;
     if (designOptions.shape !== undefined) updateData.designShape = designOptions.shape;
     if (designOptions.logo !== undefined) updateData.designLogo = designOptions.logo;
@@ -123,6 +125,7 @@ router.put('/:id', auth, async (req: AuthReq, res) => {
     updateData.expiresAt = null; // Remove expiration to make it active
   }
 
+  console.log('Update data:', updateData);
   const updated = await prisma.qrCode.update({
     where: { id: qr.id },
     data: updateData
