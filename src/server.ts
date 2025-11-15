@@ -6,6 +6,7 @@ import { env } from './config/env.js';
 import authRoutes from './routes/auth.js';
 import qrRoutes from './routes/qr.js';
 import scanRoutes from './routes/scan.js';
+import templateRoutes from './routes/template.js';
 
 const app = express();
 
@@ -21,6 +22,7 @@ app.get('/health', (_req, res) => res.json({ ok: true }));
 
 app.use('/auth', authRoutes);
 app.use('/qr', qrRoutes);
+app.use('/templates', templateRoutes);
 app.use('/scan', scanRoutes); // public
 
 app.listen(env.PORT, () => {
