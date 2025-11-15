@@ -62,10 +62,23 @@ router.post('/signup', async (req, res) => {
       },
     });
 
+    // Set secure httpOnly cookies
+    res.cookie('accessToken', accessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production', // HTTPS in production
+      sameSite: 'strict',
+      maxAge: 15 * 60 * 1000, // 15 minutes
+    });
+
+    res.cookie('refreshToken', refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production', // HTTPS in production
+      sameSite: 'strict',
+      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+    });
+
     res.status(201).json({
       message: 'Account created successfully',
-      accessToken,
-      refreshToken,
       user: { id: user.id, email: user.email, emailVerified: user.emailVerified, role: user.role },
     });
   } catch (error) {
@@ -107,9 +120,22 @@ router.post('/login', async (req, res) => {
       },
     });
 
+    // Set secure httpOnly cookies
+    res.cookie('accessToken', accessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production', // HTTPS in production
+      sameSite: 'strict',
+      maxAge: 15 * 60 * 1000, // 15 minutes
+    });
+
+    res.cookie('refreshToken', refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production', // HTTPS in production
+      sameSite: 'strict',
+      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+    });
+
     res.json({
-      accessToken,
-      refreshToken,
       user: {
         id: user.id,
         email: user.email,
@@ -126,7 +152,8 @@ router.post('/login', async (req, res) => {
 // POST /auth/logout - User logout
 router.post('/logout', auth, async (req: AuthReq, res: Response) => {
   try {
-    const { refreshToken } = req.body ?? {};
+    // Get refresh token from cookie
+    const refreshToken = req.cookies?.refreshToken;
 
     if (refreshToken) {
       // Delete the refresh token from database
@@ -138,6 +165,19 @@ router.post('/logout', auth, async (req: AuthReq, res: Response) => {
       });
     }
 
+    // Clear cookies
+    res.clearCookie('accessToken', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+    });
+
+    res.clearCookie('refreshToken', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+    });
+
     res.json({ message: 'Logged out successfully' });
   } catch (error) {
     console.error('Logout error:', error);
@@ -148,7 +188,8 @@ router.post('/logout', auth, async (req: AuthReq, res: Response) => {
 // POST /auth/refresh - Refresh access token
 router.post('/refresh', async (req, res) => {
   try {
-    const { refreshToken } = req.body ?? {};
+    // Get refresh token from cookie instead of request body
+    const refreshToken = req.cookies?.refreshToken;
     if (!refreshToken) {
       return res.status(400).json({ error: 'Refresh token is required' });
     }
@@ -175,7 +216,15 @@ router.post('/refresh', async (req, res) => {
       email: storedToken.user.email,
     });
 
-    res.json({ accessToken });
+    // Set new access token cookie
+    res.cookie('accessToken', accessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 15 * 60 * 1000, // 15 minutes
+    });
+
+    res.json({ message: 'Token refreshed successfully' });
   } catch (error) {
     console.error('Refresh error:', error);
     res.status(500).json({ error: 'Internal server error' });

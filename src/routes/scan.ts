@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { prisma } from '../prisma.js';
 import { comparePassword } from '../lib/hash.js';
+import { getLocationFromIP } from '../lib/geolocation.js';
 
 const router = Router();
 
@@ -29,14 +30,52 @@ router.get('/:slug', async (req, res) => {
     if (!ok) return res.status(403).send('Wrong password');
   }
 
-  // log scan
-  await prisma.scan.create({
-    data: {
-      qrId: qr.id,
-      ip: req.ip,
-      ua: req.headers['user-agent'] ?? ''
+  // Get location from IP (async, don't block redirect)
+  const clientIP = req.ip || req.connection.remoteAddress || req.headers['x-forwarded-for']?.toString()?.split(',')[0];
+  
+  console.log('Scan request - IP:', clientIP, 'User-Agent:', req.headers['user-agent']);
+  
+  // Log scan with location data (run async to not delay redirect)
+  const logScan = async () => {
+    try {
+      console.log('Getting location for IP:', clientIP);
+      const locationData = await getLocationFromIP(clientIP || '');
+      console.log('Location data received:', locationData);
+      
+      const scanRecord = await prisma.scan.create({
+        data: {
+          qrId: qr.id,
+          ip: clientIP || null,
+          ua: req.headers['user-agent'] ?? '',
+          country: locationData.country,
+          city: locationData.city,
+          region: locationData.region,
+          latitude: locationData.latitude,
+          longitude: locationData.longitude
+        }
+      });
+      
+      console.log('Scan logged successfully:', scanRecord);
+    } catch (error) {
+      console.error('Failed to log scan with location:', error);
+      // Fallback: log scan without location data
+      try {
+        const fallbackScan = await prisma.scan.create({
+          data: {
+            qrId: qr.id,
+            ip: clientIP || null,
+            ua: req.headers['user-agent'] ?? ''
+          }
+        });
+        console.log('Fallback scan logged:', fallbackScan);
+      } catch (fallbackError) {
+        console.error('Failed to log even fallback scan:', fallbackError);
+      }
     }
-  });
+  };
+
+  // Start logging async but don't wait for it
+  logScan();
 
   return res.redirect(qr.originalUrl);
 });

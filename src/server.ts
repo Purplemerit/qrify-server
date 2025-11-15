@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import cookieParser from 'cookie-parser';
 import { env } from './config/env.js';
 import authRoutes from './routes/auth.js';
 import qrRoutes from './routes/qr.js';
@@ -9,7 +10,11 @@ import scanRoutes from './routes/scan.js';
 const app = express();
 
 app.use(helmet());
-app.use(cors());
+app.use(cors({
+  origin: env.CLIENT_URL,
+  credentials: true, // Enable cookies
+}));
+app.use(cookieParser()); // Parse cookies
 app.use(express.json({ limit: '2mb' }));
 
 app.get('/health', (_req, res) => res.json({ ok: true }));
