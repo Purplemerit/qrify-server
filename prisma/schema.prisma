@@ -52,10 +52,13 @@ model QrCode {
   format          String    @default("PNG") // PNG | SVG
   
   // Design options
-  designFrame     Int?      @default(1)
-  designShape     Int?      @default(1) 
-  designLogo      Int?      @default(0)
-  designLevel     Int?      @default(2)
+  designFrame       Int?      @default(1)
+  designShape       Int?      @default(1) 
+  designLogo        Int?      @default(0)
+  designLevel       Int?      @default(2)
+  designDotStyle    Int?      @default(1)
+  designBgColor     String?   @default("#ffffff")
+  designOuterBorder Int?      @default(1)
   
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
@@ -86,10 +89,13 @@ model Template {
   description String?
   
   // Design options
-  designFrame Int      @default(1)
-  designShape Int      @default(1) 
-  designLogo  Int      @default(0)
-  designLevel Int      @default(2)
+  designFrame     Int      @default(1)
+  designShape     Int      @default(1) 
+  designLogo      Int      @default(0)
+  designLevel     Int      @default(2)
+  designDotStyle  Int?     @default(1)
+  designBgColor   String?  @default("#ffffff")
+  designOuterBorder Int?   @default(1)
   
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

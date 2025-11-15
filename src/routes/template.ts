@@ -13,7 +13,10 @@ const createTemplateSchema = z.object({
     frame: z.number().min(1).max(10),
     shape: z.number().min(1).max(4),
     logo: z.number().min(0).max(6),
-    level: z.number().min(1).max(4)
+    level: z.number().min(1).max(4),
+    dotStyle: z.number().min(1).max(8).optional(),
+    bgColor: z.string().optional(),
+    outerBorder: z.number().min(1).max(8).optional()
   })
 });
 
@@ -24,7 +27,10 @@ const updateTemplateSchema = z.object({
     frame: z.number().min(1).max(10),
     shape: z.number().min(1).max(4),
     logo: z.number().min(0).max(6),
-    level: z.number().min(1).max(4)
+    level: z.number().min(1).max(4),
+    dotStyle: z.number().min(1).max(8).optional(),
+    bgColor: z.string().optional(),
+    outerBorder: z.number().min(1).max(8).optional()
   }).optional()
 });
 
@@ -49,6 +55,9 @@ router.get('/', auth, async (req: AuthReq, res) => {
         designShape: true,
         designLogo: true,
         designLevel: true,
+        designDotStyle: true,
+        designBgColor: true,
+        designOuterBorder: true,
         createdAt: true,
         updatedAt: true
       },
@@ -66,7 +75,10 @@ router.get('/', auth, async (req: AuthReq, res) => {
         frame: template.designFrame,
         shape: template.designShape,
         logo: template.designLogo,
-        level: template.designLevel
+        level: template.designLevel,
+        dotStyle: template.designDotStyle || 1,
+        bgColor: template.designBgColor || '#ffffff',
+        outerBorder: template.designOuterBorder || 1
       },
       createdAt: template.createdAt,
       updatedAt: template.updatedAt
@@ -106,6 +118,9 @@ router.post('/', auth, async (req: AuthReq, res) => {
         designShape: designOptions.shape,
         designLogo: designOptions.logo,
         designLevel: designOptions.level,
+        designDotStyle: designOptions.dotStyle || 1,
+        designBgColor: designOptions.bgColor || '#ffffff',
+        designOuterBorder: designOptions.outerBorder || 1,
         ownerId: userId
       },
       select: {
@@ -116,6 +131,9 @@ router.post('/', auth, async (req: AuthReq, res) => {
         designShape: true,
         designLogo: true,
         designLevel: true,
+        designDotStyle: true,
+        designBgColor: true,
+        designOuterBorder: true,
         createdAt: true,
         updatedAt: true
       }
@@ -130,7 +148,10 @@ router.post('/', auth, async (req: AuthReq, res) => {
         frame: template.designFrame,
         shape: template.designShape,
         logo: template.designLogo,
-        level: template.designLevel
+        level: template.designLevel,
+        dotStyle: template.designDotStyle || 1,
+        bgColor: template.designBgColor || '#ffffff',
+        outerBorder: template.designOuterBorder || 1
       },
       createdAt: template.createdAt,
       updatedAt: template.updatedAt
@@ -184,6 +205,9 @@ router.put('/:id', auth, async (req: AuthReq, res) => {
       updateData.designShape = designOptions.shape;
       updateData.designLogo = designOptions.logo;
       updateData.designLevel = designOptions.level;
+      if (designOptions.dotStyle !== undefined) updateData.designDotStyle = designOptions.dotStyle;
+      if (designOptions.bgColor !== undefined) updateData.designBgColor = designOptions.bgColor;
+      if (designOptions.outerBorder !== undefined) updateData.designOuterBorder = designOptions.outerBorder;
     }
 
     const template = await prisma.template.update({
@@ -197,6 +221,9 @@ router.put('/:id', auth, async (req: AuthReq, res) => {
         designShape: true,
         designLogo: true,
         designLevel: true,
+        designDotStyle: true,
+        designBgColor: true,
+        designOuterBorder: true,
         createdAt: true,
         updatedAt: true
       }
@@ -211,7 +238,10 @@ router.put('/:id', auth, async (req: AuthReq, res) => {
         frame: template.designFrame,
         shape: template.designShape,
         logo: template.designLogo,
-        level: template.designLevel
+        level: template.designLevel,
+        dotStyle: template.designDotStyle || 1,
+        bgColor: template.designBgColor || '#ffffff',
+        outerBorder: template.designOuterBorder || 1
       },
       createdAt: template.createdAt,
       updatedAt: template.updatedAt
@@ -280,6 +310,9 @@ router.get('/:id', auth, async (req: AuthReq, res) => {
         designShape: true,
         designLogo: true,
         designLevel: true,
+        designDotStyle: true,
+        designBgColor: true,
+        designOuterBorder: true,
         createdAt: true,
         updatedAt: true
       }
@@ -298,7 +331,10 @@ router.get('/:id', auth, async (req: AuthReq, res) => {
         frame: template.designFrame,
         shape: template.designShape,
         logo: template.designLogo,
-        level: template.designLevel
+        level: template.designLevel,
+        dotStyle: template.designDotStyle || 1,
+        bgColor: template.designBgColor || '#ffffff',
+        outerBorder: template.designOuterBorder || 1
       },
       createdAt: template.createdAt,
       updatedAt: template.updatedAt
