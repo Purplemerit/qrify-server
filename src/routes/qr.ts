@@ -361,11 +361,14 @@ router.get('/my-codes', auth, async (req: AuthReq, res) => {
     dynamic: qr.dynamic,
     format: qr.format,
     errorCorrection: qr.errorCorrection,
-    designOptions: (qr.designFrame || qr.designShape || qr.designLogo || qr.designLevel !== 2) ? {
+    designOptions: (qr.designFrame || qr.designShape || qr.designLogo || qr.designLevel !== 2 || qr.designDotStyle || qr.designBgColor || qr.designOuterBorder) ? {
       frame: qr.designFrame || 1,
       shape: qr.designShape || 1,
       logo: qr.designLogo || 0,
-      level: qr.designLevel || 2
+      level: qr.designLevel || 2,
+      dotStyle: qr.designDotStyle || 1,
+      bgColor: qr.designBgColor || '#ffffff',
+      outerBorder: qr.designOuterBorder || 1
     } : null
   }));
 
@@ -444,6 +447,9 @@ router.put('/:id', auth, async (req: AuthReq, res) => {
     if (designOptions.shape !== undefined) updateData.designShape = designOptions.shape;
     if (designOptions.logo !== undefined) updateData.designLogo = designOptions.logo;
     if (designOptions.level !== undefined) updateData.designLevel = designOptions.level;
+    if (designOptions.dotStyle !== undefined) updateData.designDotStyle = designOptions.dotStyle;
+    if (designOptions.bgColor !== undefined) updateData.designBgColor = designOptions.bgColor;
+    if (designOptions.outerBorder !== undefined) updateData.designOuterBorder = designOptions.outerBorder;
   }
 
   // Update expiration based on status
