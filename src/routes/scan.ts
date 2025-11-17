@@ -31,7 +31,36 @@ router.get('/:slug', async (req, res) => {
   }
 
   // Get location from IP (async, don't block redirect)
-  const clientIP = req.ip || req.connection.remoteAddress || req.headers['x-forwarded-for']?.toString()?.split(',')[0];
+  // Better IP detection for production environments
+  const getClientIP = (req: any) => {
+    // Check various headers that proxies/load balancers might set
+    const forwarded = req.headers['x-forwarded-for'];
+    if (forwarded) {
+      // Get first IP if comma-separated
+      const firstIP = forwarded.toString().split(',')[0].trim();
+      console.log('🌐 Found x-forwarded-for IP:', firstIP);
+      return firstIP;
+    }
+    
+    const realIP = req.headers['x-real-ip'];
+    if (realIP) {
+      console.log('🌐 Found x-real-ip:', realIP);
+      return realIP.toString();
+    }
+    
+    const cfConnectingIP = req.headers['cf-connecting-ip']; // Cloudflare
+    if (cfConnectingIP) {
+      console.log('🌐 Found cf-connecting-ip:', cfConnectingIP);
+      return cfConnectingIP.toString();
+    }
+    
+    // Fallback to req.ip or connection remote address
+    const fallbackIP = req.ip || req.connection?.remoteAddress || req.socket?.remoteAddress;
+    console.log('🌐 Using fallback IP:', fallbackIP);
+    return fallbackIP;
+  };
+  
+  const clientIP = getClientIP(req);
   
   console.log('Scan request - IP:', clientIP, 'User-Agent:', req.headers['user-agent']);
   
