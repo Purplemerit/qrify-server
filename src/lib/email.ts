@@ -7,7 +7,7 @@ export interface EmailConfig {
 
 export const emailConfig: EmailConfig = {
   from: process.env.EMAIL_FROM || 'noreply@qrify.com',
-  baseUrl: process.env.FRONTEND_URL || 'http://localhost:5173',
+  baseUrl: process.env.CLIENT_URL || 'http://localhost:5173',
 };
 
 export function generateToken(): string {
