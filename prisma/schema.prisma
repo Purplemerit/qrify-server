@@ -25,6 +25,7 @@ model User {
   updatedAt                 DateTime  @updatedAt
 
   qrCodes      QrCode[]
+  templates    Template[]
   refreshTokens RefreshToken[]
 }
 
@@ -51,10 +52,13 @@ model QrCode {
   format          String    @default("PNG") // PNG | SVG
   
   // Design options
-  designFrame     Int?      @default(1)
-  designShape     Int?      @default(1) 
-  designLogo      Int?      @default(0)
-  designLevel     Int?      @default(2)
+  designFrame       Int?      @default(1)
+  designShape       Int?      @default(1) 
+  designLogo        Int?      @default(0)
+  designLevel       Int?      @default(2)
+  designDotStyle    Int?      @default(1)
+  designBgColor     String?   @default("#ffffff")
+  designOuterBorder Int?      @default(1)
   
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
@@ -77,4 +81,27 @@ model Scan {
   latitude  Float?   // Latitude
   longitude Float?   // Longitude
   createdAt DateTime @default(now())
+}
+
+model Template {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  
+  // Design options
+  designFrame     Int      @default(1)
+  designShape     Int      @default(1) 
+  designLogo      Int      @default(0)
+  designLevel     Int      @default(2)
+  designDotStyle  Int?     @default(1)
+  designBgColor   String?  @default("#ffffff")
+  designOuterBorder Int?   @default(1)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  ownerId String
+  owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@index([ownerId])
 }
