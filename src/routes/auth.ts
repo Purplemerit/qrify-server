@@ -66,14 +66,14 @@ router.post('/signup', async (req, res) => {
     res.cookie('accessToken', accessToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production', // HTTPS in production
-      sameSite: 'strict',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // Allow cross-origin
       maxAge: 15 * 60 * 1000, // 15 minutes
     });
 
     res.cookie('refreshToken', refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production', // HTTPS in production
-      sameSite: 'strict',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // Allow cross-origin
       maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
     });
 
@@ -121,19 +121,27 @@ router.post('/login', async (req, res) => {
     });
 
     // Set secure httpOnly cookies
+    console.log('🍪 Server: Setting cookies for login...');
+    console.log('🍪 Server: NODE_ENV =', process.env.NODE_ENV);
+    console.log('🍪 Server: Setting accessToken cookie');
+    
     res.cookie('accessToken', accessToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production', // HTTPS in production
-      sameSite: 'strict',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // Allow cross-origin
       maxAge: 15 * 60 * 1000, // 15 minutes
     });
 
+    console.log('🍪 Server: Setting refreshToken cookie');
+    
     res.cookie('refreshToken', refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production', // HTTPS in production
-      sameSite: 'strict',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // Allow cross-origin
       maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
     });
+
+    console.log('🍪 Server: Cookies set successfully');
 
     res.json({
       user: {
@@ -169,13 +177,13 @@ router.post('/logout', auth, async (req: AuthReq, res: Response) => {
     res.clearCookie('accessToken', {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
     });
 
     res.clearCookie('refreshToken', {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
     });
 
     res.json({ message: 'Logged out successfully' });
@@ -220,7 +228,7 @@ router.post('/refresh', async (req, res) => {
     res.cookie('accessToken', accessToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
       maxAge: 15 * 60 * 1000, // 15 minutes
     });
 
