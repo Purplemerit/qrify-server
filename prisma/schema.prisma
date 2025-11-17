@@ -17,10 +17,13 @@ model User {
   emailVerificationExpires  DateTime?
   passwordResetToken        String?   @unique
   passwordResetExpires      DateTime?
-  newEmail                  String?
-  newEmailToken             String?   @unique
-  newEmailTokenExpires      DateTime?
   role                      String    @default("admin")
+  
+  // User preferences
+  language                  String    @default("en")
+  dateFormat                String    @default("dd/mm/yyyy")
+  timeFormat                String    @default("24")
+  
   createdAt                 DateTime  @default(now())
   updatedAt                 DateTime  @updatedAt
 
