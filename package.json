@@ -18,7 +18,8 @@
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2",
     "nanoid": "^5.1.5",
-    "qrcode": "^1.5.3"
+    "qrcode": "^1.5.3",
+    "zod": "^4.1.12"
   },
   "devDependencies": {
     "@types/cookie-parser": "^1.4.10",
