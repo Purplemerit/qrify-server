@@ -18,6 +18,21 @@ app.use(cors({
 app.use(cookieParser()); // Parse cookies
 app.use(express.json({ limit: '2mb' }));
 
+// Root endpoint
+app.get('/', (_req, res) => {
+  res.json({ 
+    message: 'QRify API Server', 
+    version: '1.0.0',
+    endpoints: {
+      health: '/health',
+      auth: '/auth',
+      qr: '/qr',
+      templates: '/templates',
+      scan: '/scan'
+    }
+  });
+});
+
 app.get('/health', (_req, res) => res.json({ ok: true }));
 
 app.use('/auth', authRoutes);
