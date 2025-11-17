@@ -8,7 +8,6 @@ import {
   generateTokenExpiry,
   sendVerificationEmail,
   sendPasswordResetEmail,
-  sendEmailChangeVerificationEmail,
 } from '../lib/email.js';
 
 const router = Router();
@@ -414,6 +413,9 @@ router.get('/me', auth, async (req: AuthReq, res: Response) => {
         email: true,
         emailVerified: true,
         role: true,
+        language: true,
+        dateFormat: true,
+        timeFormat: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -475,18 +477,72 @@ router.post('/change-password', auth, async (req: AuthReq, res: Response) => {
   }
 });
 
-// POST /auth/change-email - Request email change
-router.post('/change-email', auth, async (req: AuthReq, res: Response) => {
+
+
+// PUT /auth/preferences - Update user preferences
+router.put('/preferences', auth, async (req: AuthReq, res: Response) => {
   try {
-    const { newEmail, password } = req.body ?? {};
-    if (!newEmail || !password) {
-      return res.status(400).json({ error: 'New email and password are required' });
+    const { language, dateFormat, timeFormat } = req.body ?? {};
+    
+    // Validate input
+    const validLanguages = ['en', 'es', 'fr'];
+    const validDateFormats = ['dd/mm/yyyy', 'mm/dd/yyyy', 'yyyy-mm-dd'];
+    const validTimeFormats = ['12', '24'];
+    
+    if (language && !validLanguages.includes(language)) {
+      return res.status(400).json({ error: 'Invalid language' });
+    }
+    
+    if (dateFormat && !validDateFormats.includes(dateFormat)) {
+      return res.status(400).json({ error: 'Invalid date format' });
+    }
+    
+    if (timeFormat && !validTimeFormats.includes(timeFormat)) {
+      return res.status(400).json({ error: 'Invalid time format' });
     }
 
-    // Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(newEmail)) {
-      return res.status(400).json({ error: 'Invalid email format' });
+    const updateData: any = {};
+    if (language) updateData.language = language;
+    if (dateFormat) updateData.dateFormat = dateFormat;
+    if (timeFormat) updateData.timeFormat = timeFormat;
+
+    if (Object.keys(updateData).length === 0) {
+      return res.status(400).json({ error: 'No valid preferences provided' });
+    }
+
+    const updatedUser = await prisma.user.update({
+      where: { id: req.user!.id },
+      data: updateData,
+      select: {
+        id: true,
+        email: true,
+        emailVerified: true,
+        role: true,
+        language: true,
+        dateFormat: true,
+        timeFormat: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    res.json({ 
+      message: 'Preferences updated successfully',
+      user: updatedUser
+    });
+  } catch (error) {
+    console.error('Update preferences error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// DELETE /auth/account - Delete user account
+router.delete('/account', auth, async (req: AuthReq, res: Response) => {
+  try {
+    const { password } = req.body ?? {};
+    
+    if (!password) {
+      return res.status(400).json({ error: 'Password is required to delete account' });
     }
 
     const user = await prisma.user.findUnique({
@@ -503,85 +559,27 @@ router.post('/change-email', auth, async (req: AuthReq, res: Response) => {
       return res.status(401).json({ error: 'Password is incorrect' });
     }
 
-    // Check if new email is already in use
-    const emailExists = await prisma.user.findUnique({
-      where: { email: newEmail },
-    });
-
-    if (emailExists) {
-      return res.status(409).json({ error: 'Email already in use' });
-    }
-
-    // Generate verification token for new email
-    const token = generateToken();
-    const tokenExpiry = generateTokenExpiry(24);
-
-    await prisma.user.update({
+    // Delete user and all related data (cascading deletes handled by Prisma)
+    await prisma.user.delete({
       where: { id: user.id },
-      data: {
-        newEmail,
-        newEmailToken: token,
-        newEmailTokenExpires: tokenExpiry,
-      },
     });
 
-    await sendEmailChangeVerificationEmail(newEmail, token);
+    // Clear cookies
+    res.clearCookie('accessToken', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    });
 
-    res.json({ message: 'Verification email sent to your new email address' });
+    res.clearCookie('refreshToken', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    });
+
+    res.json({ message: 'Account deleted successfully' });
   } catch (error) {
-    console.error('Change email error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// POST /auth/change-email/verify - Confirm email change
-router.post('/change-email/verify', async (req, res) => {
-  try {
-    const { token } = req.body ?? {};
-    if (!token) {
-      return res.status(400).json({ error: 'Verification token is required' });
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { newEmailToken: token },
-    });
-
-    if (!user) {
-      return res.status(400).json({ error: 'Invalid or expired verification token' });
-    }
-
-    if (user.newEmailTokenExpires && user.newEmailTokenExpires < new Date()) {
-      return res.status(400).json({ error: 'Verification token has expired' });
-    }
-
-    if (!user.newEmail) {
-      return res.status(400).json({ error: 'No email change request found' });
-    }
-
-    // Check if new email is still available
-    const emailExists = await prisma.user.findUnique({
-      where: { email: user.newEmail },
-    });
-
-    if (emailExists) {
-      return res.status(409).json({ error: 'Email already in use' });
-    }
-
-    // Update email
-    await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        email: user.newEmail,
-        newEmail: null,
-        newEmailToken: null,
-        newEmailTokenExpires: null,
-        emailVerified: true, // Automatically verify since they verified the new email
-      },
-    });
-
-    res.json({ message: 'Email changed successfully' });
-  } catch (error) {
-    console.error('Verify email change error:', error);
+    console.error('Delete account error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
