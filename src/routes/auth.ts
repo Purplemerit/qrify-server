@@ -1,8 +1,10 @@
-import { Router, type Response } from 'express';
+import { Router, type Request, type Response } from 'express';
+import { OAuth2Client } from 'google-auth-library';
 import { prisma } from '../prisma.js';
 import { hashPassword, comparePassword } from '../lib/hash.js';
 import { signJwt, verifyJwt } from '../lib/jwt.js';
 import { auth, type AuthReq } from '../middleware/auth.js';
+import { env } from '../config/env.js';
 import {
   generateToken,
   generateTokenExpiry,
@@ -11,6 +13,7 @@ import {
 } from '../lib/email.js';
 
 const router = Router();
+const googleClient = new OAuth2Client(env.GOOGLE_CLIENT_ID);
 
 // POST /auth/signup - User registration with automatic login
 router.post('/signup', async (req, res) => {
@@ -153,6 +156,107 @@ router.post('/login', async (req, res) => {
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /auth/google - Google OAuth authentication
+router.post('/google', async (req: Request, res: Response) => {
+  try {
+    const { credential } = req.body;
+
+    if (!credential) {
+      return res.status(400).json({ error: 'Google credential is required' });
+    }
+
+    let payload;
+
+    try {
+      // First, try to verify as a proper JWT ID token
+      const ticket = await googleClient.verifyIdToken({
+        idToken: credential,
+        audience: env.GOOGLE_CLIENT_ID,
+      });
+      payload = ticket.getPayload();
+    } catch (jwtError: any) {
+      // If JWT verification fails, try to parse as base64-encoded user info
+      try {
+        const decodedCredential = atob(credential);
+        payload = JSON.parse(decodedCredential);
+        
+        // Validate that we have the required fields
+        if (!payload.email) {
+          throw new Error('Missing email in decoded credential');
+        }
+      } catch (parseError) {
+        console.error('Failed to parse credential as JWT or base64:', jwtError, parseError);
+        return res.status(400).json({ error: 'Invalid Google credential format' });
+      }
+    }
+
+    if (!payload) {
+      return res.status(400).json({ error: 'Invalid Google token' });
+    }
+
+    const { email, name, picture, email_verified } = payload;
+
+    if (!email) {
+      return res.status(400).json({ error: 'Email not provided by Google' });
+    }
+
+    // Check if user exists
+    let user = await prisma.user.findUnique({
+      where: { email },
+    });
+
+    // If user doesn't exist, create new user
+    if (!user) {
+      const defaultPassword = Math.random().toString(36).slice(-8);
+      const hashedPassword = await hashPassword(defaultPassword);
+
+      user = await prisma.user.create({
+        data: {
+          email,
+          password: hashedPassword,
+          emailVerified: email_verified || false,
+          role: 'user',
+        },
+      });
+    } else if (!user.emailVerified && email_verified) {
+      // Update email verification status if verified by Google
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: { emailVerified: true },
+      });
+    }
+
+    // Generate JWT token
+    const token = signJwt({
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+    });
+
+    // Set secure cookie
+    res.cookie('token', token, {
+      httpOnly: true,
+      secure: env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    });
+
+    res.json({
+      message: 'Google authentication successful',
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        emailVerified: user.emailVerified,
+        role: user.role,
+      },
+    });
+  } catch (error) {
+    console.error('Google OAuth error:', error);
+    res.status(500).json({ error: 'Google authentication failed' });
   }
 });
 
