@@ -7,7 +7,7 @@
   },
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "cross-env PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING=1 npx prisma generate && tsc -p tsconfig.json",
+    "build": "PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING=1 npx prisma generate && tsc -p tsconfig.json",
     "start": "node dist/server.js",
     "prisma:dev": "prisma migrate dev",
     "prisma:studio": "prisma studio"
@@ -43,7 +43,6 @@
     "@types/passport": "^1.0.17",
     "@types/passport-google-oauth20": "^2.0.17",
     "@types/qrcode": "^1.5.6",
-    "cross-env": "^7.0.3",
     "tsx": "^4.7.1",
     "typescript": "^5.4.5"
   }
