@@ -123,9 +123,6 @@ router.post('/login', async (req, res) => {
     });
 
     // Set secure httpOnly cookies
-    console.log('🍪 Server: Setting cookies for login...');
-    console.log('🍪 Server: NODE_ENV =', process.env.NODE_ENV);
-    console.log('🍪 Server: Setting accessToken cookie');
     
     res.cookie('accessToken', accessToken, {
       httpOnly: true,
@@ -134,7 +131,6 @@ router.post('/login', async (req, res) => {
       maxAge: 15 * 60 * 1000, // 15 minutes
     });
 
-    console.log('🍪 Server: Setting refreshToken cookie');
     
     res.cookie('refreshToken', refreshToken, {
       httpOnly: true,
@@ -143,7 +139,6 @@ router.post('/login', async (req, res) => {
       maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
     });
 
-    console.log('🍪 Server: Cookies set successfully');
 
     res.json({
       user: {
@@ -231,7 +226,7 @@ router.post('/google', async (req: Request, res: Response) => {
 
     // Generate JWT token
     const token = signJwt({
-      userId: user.id,
+      id: user.id,
       email: user.email,
       role: user.role,
     });

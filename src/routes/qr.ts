@@ -12,14 +12,12 @@ router.get('/stats', auth, async (req: AuthReq, res) => {
   try {
     const userId = req.user!.id;
     
-    console.log('Fetching stats for user:', userId);
     
     // Get total QR codes count
     const totalQrCodes = await prisma.qrCode.count({
       where: { ownerId: userId }
     });
 
-    console.log('Total QR codes:', totalQrCodes);
 
     // Get QR codes created this month
     const startOfMonth = new Date();
@@ -59,8 +57,6 @@ router.get('/stats', auth, async (req: AuthReq, res) => {
       ORDER BY s."createdAt" DESC
     `;
 
-    console.log('All scans count:', allScans.length);
-    console.log('Scans with location data:', scansWithLocation);
     const totalScans = allScans.length;
 
     // Get scans this month
@@ -204,7 +200,6 @@ router.get('/stats', auth, async (req: AuthReq, res) => {
       LIMIT 5
     `;
 
-    console.log('Recent activity with location:', recentActivity);
 
     console.log('Recent activity with location:', recentActivity);
 
@@ -419,7 +414,6 @@ router.get('/:id', auth, async (req: AuthReq, res) => {
 
 // PUT /qr/:id (update url if dynamic, or design options, or name)
 router.put('/:id', auth, async (req: AuthReq, res) => {
-  console.log('PUT request body:', req.body);
   const { url, designOptions, status, name } = req.body ?? {};
   const qr = await prisma.qrCode.findFirst({
     where: { id: req.params.id, ownerId: req.user!.id }
@@ -442,7 +436,6 @@ router.put('/:id', auth, async (req: AuthReq, res) => {
 
   // Update design options if provided
   if (designOptions) {
-    console.log('Updating design options:', designOptions);
     if (designOptions.frame !== undefined) updateData.designFrame = designOptions.frame;
     if (designOptions.shape !== undefined) updateData.designShape = designOptions.shape;
     if (designOptions.logo !== undefined) updateData.designLogo = designOptions.logo;
@@ -459,7 +452,6 @@ router.put('/:id', auth, async (req: AuthReq, res) => {
     updateData.expiresAt = null; // Remove expiration to make it active
   }
 
-  console.log('Update data:', updateData);
   const updated = await prisma.qrCode.update({
     where: { id: qr.id },
     data: updateData

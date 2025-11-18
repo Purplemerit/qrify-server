@@ -21,9 +21,13 @@ export function auth(req: AuthReq, res: Response, next: NextFunction) {
   }
 
   try {
-    const payload = verifyJwt<{ userId: string; email: string; role: string }>(token);
-    // Map the payload to match expected format
-    req.user = { id: payload.userId, email: payload.email };
+    const payload = verifyJwt<{ id?: string; userId?: string; email: string; role?: string }>(token);
+    // Handle both id and userId for backward compatibility
+    const userId = payload.id || payload.userId;
+    if (!userId) {
+      return res.status(401).json({ error: 'Invalid token payload' });
+    }
+    req.user = { id: userId, email: payload.email };
     next();
   } catch {
     return res.status(401).json({ error: 'Invalid token' });

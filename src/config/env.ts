@@ -6,6 +6,6 @@ export const env = {
   JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || "7d",
   CLIENT_URL: process.env.CLIENT_URL || "http://localhost:5173",
   NODE_ENV: process.env.NODE_ENV || "development",
-  GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID || "**REMOVED**",
-  GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET || "**REMOVED**",
+  GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID || "YOUR_GOOGLE_CLIENT_ID_HERE",
+  GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET || "YOUR_GOOGLE_CLIENT_SECRET_HERE",
 };

@@ -11,14 +11,11 @@ export async function getLocationFromIP(ip: string): Promise<LocationData> {
   let targetIP = ip; // Declare in function scope
   
   try {
-    console.log('🌍 Getting location for IP:', ip);
     
     // For localhost/private IPs, get the actual public IP and use that for geolocation
     if (!ip || ip === '::1' || ip.startsWith('127.') || ip.startsWith('192.168.') || ip.startsWith('10.')) {
-      console.log('🌍 Local/private IP detected, getting public IP instead...');
       try {
         targetIP = await getPublicIP();
-        console.log('🌍 Found public IP:', targetIP);
       } catch (error) {
         console.error('🌍 Failed to get public IP:', error);
         return {
@@ -29,7 +26,6 @@ export async function getLocationFromIP(ip: string): Promise<LocationData> {
       }
     }
 
-    console.log('🌍 Making API request to ipapi.co for IP:', targetIP);
     
     // Create AbortController for timeout
     const controller = new AbortController();
@@ -51,7 +47,6 @@ export async function getLocationFromIP(ip: string): Promise<LocationData> {
         
         // If rate limited, try alternative service
         if (response.status === 429) {
-          console.log('🌍 Rate limited, trying alternative service...');
           return await getLocationFromIPFallback(ip);
         }
         
@@ -59,7 +54,6 @@ export async function getLocationFromIP(ip: string): Promise<LocationData> {
       }
       
       const data = await response.json();
-      console.log('🌍 Raw geolocation response:', data);
       
       // Check if the API returned an error
       if (data.error) {
@@ -75,7 +69,6 @@ export async function getLocationFromIP(ip: string): Promise<LocationData> {
         longitude: data.longitude ? parseFloat(data.longitude) : undefined
       };
       
-      console.log('🌍 Processed location data:', locationData);
       return locationData;
     } catch (fetchError) {
       clearTimeout(timeoutId);
@@ -86,7 +79,6 @@ export async function getLocationFromIP(ip: string): Promise<LocationData> {
     
     // Don't try fallback if aborted due to timeout
     if (error && typeof error === 'object' && 'name' in error && error.name === 'AbortError') {
-      console.log('🌍 Request timed out, skipping fallback');
       return {
         country: 'Unknown',
         city: 'Unknown',
@@ -101,7 +93,6 @@ export async function getLocationFromIP(ip: string): Promise<LocationData> {
 // Fallback geolocation service using ip-api.com
 async function getLocationFromIPFallback(ip: string): Promise<LocationData> {
   try {
-    console.log('🌍 Using fallback service for IP:', ip);
     
     // For localhost/private IPs, we should have already resolved to public IP
     // But just in case, don't skip here - the IP should already be public
@@ -134,7 +125,6 @@ async function getLocationFromIPFallback(ip: string): Promise<LocationData> {
       }
       
       const data = await response.json();
-      console.log('🌍 Fallback geolocation response:', data);
       
       if (data.status !== 'success') {
         console.error('🌍 Fallback API returned error status:', data.status);
@@ -165,7 +155,6 @@ async function getLocationFromIPFallback(ip: string): Promise<LocationData> {
 // Helper function to get the public IP address
 async function getPublicIP(): Promise<string> {
   try {
-    console.log('🌍 Getting public IP address...');
     
     // Try multiple services in case one is down
     const services = [
@@ -177,7 +166,6 @@ async function getPublicIP(): Promise<string> {
     
     for (const service of services) {
       try {
-        console.log(`🌍 Trying service: ${service}`);
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 3000);
         
@@ -192,11 +180,9 @@ async function getPublicIP(): Promise<string> {
         
         if (response.ok) {
           const publicIP = (await response.text()).trim();
-          console.log(`🌍 Got public IP from ${service}: ${publicIP}`);
           return publicIP;
         }
       } catch (error) {
-        console.log(`🌍 Service ${service} failed:`, error);
         continue; // Try next service
       }
     }
