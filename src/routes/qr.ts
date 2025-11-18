@@ -439,6 +439,7 @@ router.put('/:id', auth, async (req: AuthReq, res) => {
 
   // Update design options if provided
   if (designOptions) {
+    console.log('Updating design options:', designOptions);
     if (designOptions.frame !== undefined) updateData.designFrame = designOptions.frame;
     if (designOptions.shape !== undefined) updateData.designShape = designOptions.shape;
     if (designOptions.logo !== undefined) updateData.designLogo = designOptions.logo;
