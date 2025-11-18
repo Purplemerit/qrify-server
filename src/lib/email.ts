@@ -1,4 +1,6 @@
 import crypto from 'crypto';
+import nodemailer from 'nodemailer';
+import { env } from '../config/env.js';
 
 export interface EmailConfig {
   from: string;
@@ -6,9 +8,18 @@ export interface EmailConfig {
 }
 
 export const emailConfig: EmailConfig = {
-  from: process.env.EMAIL_FROM || 'noreply@qrify.com',
-  baseUrl: process.env.CLIENT_URL || 'http://localhost:5173',
+  from: env.EMAIL_FROM,
+  baseUrl: env.CLIENT_URL,
 };
+
+// Create transporter for sending emails
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: env.EMAIL_USER,
+    pass: env.EMAIL_PASSWORD,
+  },
+});
 
 export function generateToken(): string {
   return crypto.randomBytes(32).toString('hex');
@@ -21,15 +32,17 @@ export function generateTokenExpiry(hours: number = 24): Date {
 }
 
 export async function sendEmail(to: string, subject: string, html: string): Promise<void> {
-  console.log('=== EMAIL ===');
-  console.log('To:', to);
-  console.log('Subject:', subject);
-  console.log('Body:', html);
-  console.log('=============');
-
-  // TODO: Integrate with email service (e.g., SendGrid, Mailgun, or Nodemailer)
-  // For now, this logs the email content to console for development
-  // In production, replace this with actual email sending logic
+  try {
+    await transporter.sendMail({
+      from: emailConfig.from,
+      to,
+      subject,
+      html,
+    });
+  } catch (error) {
+    console.error('Error sending email:', error);
+    throw new Error('Failed to send email');
+  }
 }
 
 export async function sendVerificationEmail(email: string, token: string): Promise<void> {

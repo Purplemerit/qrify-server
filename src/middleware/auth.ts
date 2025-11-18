@@ -6,8 +6,8 @@ export type AuthReq = Request & {
 };
 
 export function auth(req: AuthReq, res: Response, next: NextFunction) {
-  // Try to get token from cookie first, then fallback to Authorization header
-  let token = req.cookies?.accessToken;
+  // Try to get token from various cookie names, then fallback to Authorization header
+  let token = req.cookies?.accessToken || req.cookies?.token;
   
   if (!token) {
     const header = req.headers['authorization'];
@@ -21,8 +21,13 @@ export function auth(req: AuthReq, res: Response, next: NextFunction) {
   }
 
   try {
-    const payload = verifyJwt<{ id: string; email: string }>(token);
-    req.user = payload;
+    const payload = verifyJwt<{ id?: string; userId?: string; email: string; role?: string }>(token);
+    // Handle both id and userId for backward compatibility
+    const userId = payload.id || payload.userId;
+    if (!userId) {
+      return res.status(401).json({ error: 'Invalid token payload' });
+    }
+    req.user = { id: userId, email: payload.email };
     next();
   } catch {
     return res.status(401).json({ error: 'Invalid token' });

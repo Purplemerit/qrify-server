@@ -12,14 +12,12 @@ router.get('/stats', auth, async (req: AuthReq, res) => {
   try {
     const userId = req.user!.id;
     
-    console.log('Fetching stats for user:', userId);
     
     // Get total QR codes count
     const totalQrCodes = await prisma.qrCode.count({
       where: { ownerId: userId }
     });
 
-    console.log('Total QR codes:', totalQrCodes);
 
     // Get QR codes created this month
     const startOfMonth = new Date();
@@ -59,8 +57,6 @@ router.get('/stats', auth, async (req: AuthReq, res) => {
       ORDER BY s."createdAt" DESC
     `;
 
-    console.log('All scans count:', allScans.length);
-    console.log('Scans with location data:', scansWithLocation);
     const totalScans = allScans.length;
 
     // Get scans this month
@@ -204,7 +200,6 @@ router.get('/stats', auth, async (req: AuthReq, res) => {
       LIMIT 5
     `;
 
-    console.log('Recent activity with location:', recentActivity);
 
     console.log('Recent activity with location:', recentActivity);
 
@@ -359,6 +354,7 @@ router.get('/my-codes', auth, async (req: AuthReq, res) => {
     created_at: qr.createdAt,
     slug: qr.slug,
     dynamic: qr.dynamic,
+    bulk: qr.bulk,
     format: qr.format,
     errorCorrection: qr.errorCorrection,
     designOptions: (qr.designFrame || qr.designShape || qr.designLogo || qr.designLevel !== 2 || qr.designDotStyle || qr.designBgColor || qr.designOuterBorder) ? {
@@ -381,6 +377,7 @@ router.post('/url', auth, async (req: AuthReq, res) => {
     name,
     url,
     dynamic = false,
+    bulk = false,
     password,
     expiresAt,
     errorCorrection = 'M',
@@ -396,6 +393,7 @@ router.post('/url', auth, async (req: AuthReq, res) => {
       name,
       originalUrl: url,
       dynamic,
+      bulk,
       passwordHash,
       expiresAt: expiresAt ? new Date(expiresAt) : null,
       slug: nanoid(8),
@@ -419,12 +417,43 @@ router.get('/:id', auth, async (req: AuthReq, res) => {
 
 // PUT /qr/:id (update url if dynamic, or design options, or name)
 router.put('/:id', auth, async (req: AuthReq, res) => {
-  console.log('PUT request body:', req.body);
   const { url, designOptions, status, name } = req.body ?? {};
   const qr = await prisma.qrCode.findFirst({
     where: { id: req.params.id, ownerId: req.user!.id }
   });
   if (!qr) return res.status(404).json({ error: 'not found' });
+
+  // Prepare update data
+  const updateData: any = {};
+  
+  // Update URL only for dynamic QR codes
+  if (url !== undefined) {
+    if (!qr.dynamic) return res.status(400).json({ error: 'not dynamic' });
+    updateData.originalUrl = url;
+  }
+
+  // Update name if provided
+  if (name !== undefined) {
+    updateData.name = name;
+  }
+
+  // Update design options if provided
+  if (designOptions) {
+    if (designOptions.frame !== undefined) updateData.designFrame = designOptions.frame;
+    if (designOptions.shape !== undefined) updateData.designShape = designOptions.shape;
+    if (designOptions.logo !== undefined) updateData.designLogo = designOptions.logo;
+    if (designOptions.level !== undefined) updateData.designLevel = designOptions.level;
+    if (designOptions.dotStyle !== undefined) updateData.designDotStyle = designOptions.dotStyle;
+    if (designOptions.bgColor !== undefined) updateData.designBgColor = designOptions.bgColor;
+    if (designOptions.outerBorder !== undefined) updateData.designOuterBorder = designOptions.outerBorder;
+  }
+
+  // Update expiration based on status
+  if (status === 'inactive') {
+    updateData.expiresAt = new Date(); // Set to current time to make it inactive
+  } else if (status === 'active') {
+    updateData.expiresAt = null; // Remove expiration to make it active
+  }
 
   // Prepare update data
   const updateData: any = {};

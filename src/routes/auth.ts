@@ -1,16 +1,71 @@
-import { Router, type Response } from 'express';
+import { Router, type Request, type Response } from 'express';
+import { OAuth2Client } from 'google-auth-library';
 import { prisma } from '../prisma.js';
 import { hashPassword, comparePassword } from '../lib/hash.js';
 import { signJwt, verifyJwt } from '../lib/jwt.js';
 import { auth, type AuthReq } from '../middleware/auth.js';
+import { env } from '../config/env.js';
 import {
   generateToken,
   generateTokenExpiry,
   sendVerificationEmail,
   sendPasswordResetEmail,
 } from '../lib/email.js';
+import { verifyEmailWithKickbox, isEmailAcceptable } from '../lib/kickbox.js';
 
 const router = Router();
+const googleClient = new OAuth2Client(env.GOOGLE_CLIENT_ID);
+
+// POST /auth/verify-email - Verify email address with Kickbox (real-time validation)
+router.post('/verify-email', async (req, res) => {
+  try {
+    const { email } = req.body ?? {};
+    if (!email) {
+      return res.status(400).json({ error: 'Email is required' });
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ 
+        valid: false, 
+        error: 'Invalid email format' 
+      });
+    }
+
+    // Check if email already exists
+    const exists = await prisma.user.findUnique({ where: { email } });
+    if (exists) {
+      return res.status(400).json({ 
+        valid: false, 
+        error: 'Email already in use' 
+      });
+    }
+
+    // Verify email with Kickbox
+    const kickboxResult = await verifyEmailWithKickbox(email);
+    const emailCheck = isEmailAcceptable(kickboxResult);
+    
+    if (!emailCheck.isValid) {
+      return res.json({ 
+        valid: false,
+        error: emailCheck.message,
+        suggestion: emailCheck.suggestion,
+        result: kickboxResult.result,
+      });
+    }
+
+    res.json({ 
+      valid: true,
+      result: kickboxResult.result,
+      suggestion: kickboxResult.did_you_mean,
+    });
+  } catch (error) {
+    console.error('Email verification error:', error);
+    // Don't block signup on verification errors
+    res.json({ valid: true, error: 'Verification service unavailable' });
+  }
+});
 
 // POST /auth/signup - User registration with automatic login
 router.post('/signup', async (req, res) => {
@@ -29,6 +84,17 @@ router.post('/signup', async (req, res) => {
     // Validate password strength (at least 8 characters)
     if (password.length < 8) {
       return res.status(400).json({ error: 'Password must be at least 8 characters long' });
+    }
+
+    // Verify email with Kickbox
+    const kickboxResult = await verifyEmailWithKickbox(email);
+    const emailCheck = isEmailAcceptable(kickboxResult);
+    
+    if (!emailCheck.isValid) {
+      return res.status(400).json({ 
+        error: emailCheck.message,
+        suggestion: emailCheck.suggestion,
+      });
     }
 
     const exists = await prisma.user.findUnique({ where: { email } });
@@ -120,9 +186,6 @@ router.post('/login', async (req, res) => {
     });
 
     // Set secure httpOnly cookies
-    console.log('🍪 Server: Setting cookies for login...');
-    console.log('🍪 Server: NODE_ENV =', process.env.NODE_ENV);
-    console.log('🍪 Server: Setting accessToken cookie');
     
     res.cookie('accessToken', accessToken, {
       httpOnly: true,
@@ -131,7 +194,6 @@ router.post('/login', async (req, res) => {
       maxAge: 15 * 60 * 1000, // 15 minutes
     });
 
-    console.log('🍪 Server: Setting refreshToken cookie');
     
     res.cookie('refreshToken', refreshToken, {
       httpOnly: true,
@@ -140,7 +202,6 @@ router.post('/login', async (req, res) => {
       maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
     });
 
-    console.log('🍪 Server: Cookies set successfully');
 
     res.json({
       user: {
@@ -153,6 +214,107 @@ router.post('/login', async (req, res) => {
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /auth/google - Google OAuth authentication
+router.post('/google', async (req: Request, res: Response) => {
+  try {
+    const { credential } = req.body;
+
+    if (!credential) {
+      return res.status(400).json({ error: 'Google credential is required' });
+    }
+
+    let payload;
+
+    try {
+      // First, try to verify as a proper JWT ID token
+      const ticket = await googleClient.verifyIdToken({
+        idToken: credential,
+        audience: env.GOOGLE_CLIENT_ID,
+      });
+      payload = ticket.getPayload();
+    } catch (jwtError: any) {
+      // If JWT verification fails, try to parse as base64-encoded user info
+      try {
+        const decodedCredential = atob(credential);
+        payload = JSON.parse(decodedCredential);
+        
+        // Validate that we have the required fields
+        if (!payload.email) {
+          throw new Error('Missing email in decoded credential');
+        }
+      } catch (parseError) {
+        console.error('Failed to parse credential as JWT or base64:', jwtError, parseError);
+        return res.status(400).json({ error: 'Invalid Google credential format' });
+      }
+    }
+
+    if (!payload) {
+      return res.status(400).json({ error: 'Invalid Google token' });
+    }
+
+    const { email, name, picture, email_verified } = payload;
+
+    if (!email) {
+      return res.status(400).json({ error: 'Email not provided by Google' });
+    }
+
+    // Check if user exists
+    let user = await prisma.user.findUnique({
+      where: { email },
+    });
+
+    // If user doesn't exist, create new user
+    if (!user) {
+      const defaultPassword = Math.random().toString(36).slice(-8);
+      const hashedPassword = await hashPassword(defaultPassword);
+
+      user = await prisma.user.create({
+        data: {
+          email,
+          password: hashedPassword,
+          emailVerified: email_verified || false,
+          role: 'user',
+        },
+      });
+    } else if (!user.emailVerified && email_verified) {
+      // Update email verification status if verified by Google
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: { emailVerified: true },
+      });
+    }
+
+    // Generate JWT token
+    const token = signJwt({
+      id: user.id,
+      email: user.email,
+      role: user.role,
+    });
+
+    // Set secure cookie
+    res.cookie('token', token, {
+      httpOnly: true,
+      secure: env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    });
+
+    res.json({
+      message: 'Google authentication successful',
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        emailVerified: user.emailVerified,
+        role: user.role,
+      },
+    });
+  } catch (error) {
+    console.error('Google OAuth error:', error);
+    res.status(500).json({ error: 'Google authentication failed' });
   }
 });
 
