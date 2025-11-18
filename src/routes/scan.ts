@@ -38,38 +38,31 @@ router.get('/:slug', async (req, res) => {
     if (forwarded) {
       // Get first IP if comma-separated
       const firstIP = forwarded.toString().split(',')[0].trim();
-      console.log('🌐 Found x-forwarded-for IP:', firstIP);
       return firstIP;
     }
     
     const realIP = req.headers['x-real-ip'];
     if (realIP) {
-      console.log('🌐 Found x-real-ip:', realIP);
       return realIP.toString();
     }
     
     const cfConnectingIP = req.headers['cf-connecting-ip']; // Cloudflare
     if (cfConnectingIP) {
-      console.log('🌐 Found cf-connecting-ip:', cfConnectingIP);
       return cfConnectingIP.toString();
     }
     
     // Fallback to req.ip or connection remote address
     const fallbackIP = req.ip || req.connection?.remoteAddress || req.socket?.remoteAddress;
-    console.log('🌐 Using fallback IP:', fallbackIP);
     return fallbackIP;
   };
   
   const clientIP = getClientIP(req);
   
-  console.log('Scan request - IP:', clientIP, 'User-Agent:', req.headers['user-agent']);
   
   // Log scan with location data (run async to not delay redirect)
   const logScan = async () => {
     try {
-      console.log('Getting location for IP:', clientIP);
       const locationData = await getLocationFromIP(clientIP || '');
-      console.log('Location data received:', locationData);
       
       const scanRecord = await prisma.scan.create({
         data: {
@@ -84,7 +77,6 @@ router.get('/:slug', async (req, res) => {
         }
       });
       
-      console.log('Scan logged successfully:', scanRecord);
     } catch (error) {
       console.error('Failed to log scan with location:', error);
       // Fallback: log scan without location data
@@ -96,7 +88,6 @@ router.get('/:slug', async (req, res) => {
             ua: req.headers['user-agent'] ?? ''
           }
         });
-        console.log('Fallback scan logged:', fallbackScan);
       } catch (fallbackError) {
         console.error('Failed to log even fallback scan:', fallbackError);
       }

@@ -21,15 +21,7 @@ export function generateTokenExpiry(hours: number = 24): Date {
 }
 
 export async function sendEmail(to: string, subject: string, html: string): Promise<void> {
-  console.log('=== EMAIL ===');
-  console.log('To:', to);
-  console.log('Subject:', subject);
-  console.log('Body:', html);
-  console.log('=============');
 
-  // TODO: Integrate with email service (e.g., SendGrid, Mailgun, or Nodemailer)
-  // For now, this logs the email content to console for development
-  // In production, replace this with actual email sending logic
 }
 
 export async function sendVerificationEmail(email: string, token: string): Promise<void> {
