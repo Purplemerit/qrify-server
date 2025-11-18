@@ -455,6 +455,40 @@ router.put('/:id', auth, async (req: AuthReq, res) => {
     updateData.expiresAt = null; // Remove expiration to make it active
   }
 
+  // Prepare update data
+  const updateData: any = {};
+  
+  // Update URL only for dynamic QR codes
+  if (url !== undefined) {
+    if (!qr.dynamic) return res.status(400).json({ error: 'not dynamic' });
+    updateData.originalUrl = url;
+  }
+
+  // Update name if provided
+  if (name !== undefined) {
+    updateData.name = name;
+  }
+
+  // Update design options if provided
+  if (designOptions) {
+    console.log('Updating design options:', designOptions);
+    if (designOptions.frame !== undefined) updateData.designFrame = designOptions.frame;
+    if (designOptions.shape !== undefined) updateData.designShape = designOptions.shape;
+    if (designOptions.logo !== undefined) updateData.designLogo = designOptions.logo;
+    if (designOptions.level !== undefined) updateData.designLevel = designOptions.level;
+    if (designOptions.dotStyle !== undefined) updateData.designDotStyle = designOptions.dotStyle;
+    if (designOptions.bgColor !== undefined) updateData.designBgColor = designOptions.bgColor;
+    if (designOptions.outerBorder !== undefined) updateData.designOuterBorder = designOptions.outerBorder;
+  }
+
+  // Update expiration based on status
+  if (status === 'inactive') {
+    updateData.expiresAt = new Date(); // Set to current time to make it inactive
+  } else if (status === 'active') {
+    updateData.expiresAt = null; // Remove expiration to make it active
+  }
+
+  console.log('Update data:', updateData);
   const updated = await prisma.qrCode.update({
     where: { id: qr.id },
     data: updateData
