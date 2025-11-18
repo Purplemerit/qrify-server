@@ -354,6 +354,7 @@ router.get('/my-codes', auth, async (req: AuthReq, res) => {
     created_at: qr.createdAt,
     slug: qr.slug,
     dynamic: qr.dynamic,
+    bulk: qr.bulk,
     format: qr.format,
     errorCorrection: qr.errorCorrection,
     designOptions: (qr.designFrame || qr.designShape || qr.designLogo || qr.designLevel !== 2 || qr.designDotStyle || qr.designBgColor || qr.designOuterBorder) ? {
@@ -376,6 +377,7 @@ router.post('/url', auth, async (req: AuthReq, res) => {
     name,
     url,
     dynamic = false,
+    bulk = false,
     password,
     expiresAt,
     errorCorrection = 'M',
@@ -391,6 +393,7 @@ router.post('/url', auth, async (req: AuthReq, res) => {
       name,
       originalUrl: url,
       dynamic,
+      bulk,
       passwordHash,
       expiresAt: expiresAt ? new Date(expiresAt) : null,
       slug: nanoid(8),

@@ -49,6 +49,7 @@ model QrCode {
   slug            String    @unique // used in /scan/:slug
   originalUrl     String
   dynamic         Boolean   @default(false)
+  bulk            Boolean   @default(false) // bulk generated QR codes
   passwordHash    String?   // password-protected on scan
   expiresAt       DateTime?
   errorCorrection String    @default("M")

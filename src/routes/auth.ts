@@ -11,9 +11,61 @@ import {
   sendVerificationEmail,
   sendPasswordResetEmail,
 } from '../lib/email.js';
+import { verifyEmailWithKickbox, isEmailAcceptable } from '../lib/kickbox.js';
 
 const router = Router();
 const googleClient = new OAuth2Client(env.GOOGLE_CLIENT_ID);
+
+// POST /auth/verify-email - Verify email address with Kickbox (real-time validation)
+router.post('/verify-email', async (req, res) => {
+  try {
+    const { email } = req.body ?? {};
+    if (!email) {
+      return res.status(400).json({ error: 'Email is required' });
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ 
+        valid: false, 
+        error: 'Invalid email format' 
+      });
+    }
+
+    // Check if email already exists
+    const exists = await prisma.user.findUnique({ where: { email } });
+    if (exists) {
+      return res.status(400).json({ 
+        valid: false, 
+        error: 'Email already in use' 
+      });
+    }
+
+    // Verify email with Kickbox
+    const kickboxResult = await verifyEmailWithKickbox(email);
+    const emailCheck = isEmailAcceptable(kickboxResult);
+    
+    if (!emailCheck.isValid) {
+      return res.json({ 
+        valid: false,
+        error: emailCheck.message,
+        suggestion: emailCheck.suggestion,
+        result: kickboxResult.result,
+      });
+    }
+
+    res.json({ 
+      valid: true,
+      result: kickboxResult.result,
+      suggestion: kickboxResult.did_you_mean,
+    });
+  } catch (error) {
+    console.error('Email verification error:', error);
+    // Don't block signup on verification errors
+    res.json({ valid: true, error: 'Verification service unavailable' });
+  }
+});
 
 // POST /auth/signup - User registration with automatic login
 router.post('/signup', async (req, res) => {
@@ -32,6 +84,17 @@ router.post('/signup', async (req, res) => {
     // Validate password strength (at least 8 characters)
     if (password.length < 8) {
       return res.status(400).json({ error: 'Password must be at least 8 characters long' });
+    }
+
+    // Verify email with Kickbox
+    const kickboxResult = await verifyEmailWithKickbox(email);
+    const emailCheck = isEmailAcceptable(kickboxResult);
+    
+    if (!emailCheck.isValid) {
+      return res.status(400).json({ 
+        error: emailCheck.message,
+        suggestion: emailCheck.suggestion,
+      });
     }
 
     const exists = await prisma.user.findUnique({ where: { email } });
