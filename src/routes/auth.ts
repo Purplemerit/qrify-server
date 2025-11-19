@@ -14,7 +14,14 @@ import {
 import { verifyEmailWithKickbox, isEmailAcceptable } from '../lib/kickbox.js';
 
 const router = Router();
-const googleClient = new OAuth2Client(env.GOOGLE_CLIENT_ID);
+
+// Initialize Google OAuth client only if configured
+let googleClient: OAuth2Client | null = null;
+if (env.GOOGLE_CLIENT_ID) {
+  googleClient = new OAuth2Client(env.GOOGLE_CLIENT_ID);
+} else {
+  console.warn('Google OAuth Client ID not configured - Google login will be disabled');
+}
 
 // GET /auth/invitation/:token - Get invitation details
 router.get('/invitation/:token', async (req, res) => {
@@ -301,6 +308,13 @@ router.post('/login', async (req, res) => {
 // POST /auth/google - Google OAuth authentication
 router.post('/google', async (req: Request, res: Response) => {
   try {
+    // Check if Google OAuth is configured
+    if (!env.GOOGLE_CLIENT_ID || !googleClient) {
+      return res.status(501).json({ 
+        error: 'Google OAuth is not configured on this server' 
+      });
+    }
+
     const { credential } = req.body;
 
     if (!credential) {
