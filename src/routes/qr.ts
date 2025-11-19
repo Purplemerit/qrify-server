@@ -4,6 +4,7 @@ import { auth, type AuthReq } from '../middleware/auth.js';
 import { nanoid } from 'nanoid';
 import { hashPassword } from '../lib/hash.js';
 import { makePngDataUrl, makeSvgDataUrl } from '../lib/qrcode.js';
+import { getTeamMemberIds } from '../lib/team.js';
 
 const router = Router();
 
@@ -12,10 +13,17 @@ router.get('/stats', auth, async (req: AuthReq, res) => {
   try {
     const userId = req.user!.id;
     
+    // Get team member IDs to include their QR codes in stats
+    const teamMemberIds = await getTeamMemberIds(userId);
     
-    // Get total QR codes count
+    // Validate all team member IDs for security
+    if (!teamMemberIds.every(id => typeof id === 'string' && id.length >= 8 && /^[a-zA-Z0-9]+$/.test(id))) {
+      throw new Error('Invalid team member ID detected');
+    }
+    
+    // Get total QR codes count for all team members
     const totalQrCodes = await prisma.qrCode.count({
-      where: { ownerId: userId }
+      where: { ownerId: { in: teamMemberIds } }
     });
 
 
@@ -26,7 +34,7 @@ router.get('/stats', auth, async (req: AuthReq, res) => {
     
     const qrCodesThisMonth = await prisma.qrCode.count({
       where: { 
-        ownerId: userId,
+        ownerId: { in: teamMemberIds },
         createdAt: { gte: startOfMonth }
       }
     });
@@ -34,7 +42,7 @@ router.get('/stats', auth, async (req: AuthReq, res) => {
     // Get total scans with debug info
     const allScans = await prisma.scan.findMany({
       where: {
-        qr: { ownerId: userId }
+        qr: { ownerId: { in: teamMemberIds } }
       },
       select: {
         id: true,
@@ -43,26 +51,27 @@ router.get('/stats', auth, async (req: AuthReq, res) => {
       }
     }) as any[];
 
-    // Also get scans with location data using raw query to avoid TypeScript issues
-    const scansWithLocation = await prisma.$queryRaw<Array<{
-      id: string;
-      country: string | null;
-      city: string | null;
-      createdAt: Date;
-    }>>`
-      SELECT s.id, s.country, s.city, s."createdAt"
-      FROM \"Scan\" s
-      JOIN \"QrCode\" qr ON s.\"qrId\" = qr.id
-      WHERE qr.\"ownerId\" = ${userId}
-      ORDER BY s."createdAt" DESC
-    `;
+    // Get scans with location data using safe Prisma ORM queries
+    const scansWithLocation = await prisma.scan.findMany({
+      where: {
+        qr: { ownerId: { in: teamMemberIds } }
+      },
+      select: {
+        id: true,
+        country: true,
+        city: true,
+        createdAt: true
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 1000 // Limit for safety
+    });
 
     const totalScans = allScans.length;
 
     // Get scans this month
     const scansThisMonth = await prisma.scan.count({
       where: {
-        qr: { ownerId: userId },
+        qr: { ownerId: { in: teamMemberIds } },
         createdAt: { gte: startOfMonth }
       }
     });
@@ -71,7 +80,7 @@ router.get('/stats', auth, async (req: AuthReq, res) => {
     const uniqueVisitorsResult = await prisma.scan.groupBy({
       by: ['ip'],
       where: {
-        qr: { ownerId: userId },
+        qr: { ownerId: { in: teamMemberIds } },
         createdAt: { gte: startOfMonth }
       }
     });
@@ -82,10 +91,13 @@ router.get('/stats', auth, async (req: AuthReq, res) => {
 
     // Get top performing QR codes
     const topQrCodes = await prisma.qrCode.findMany({
-      where: { ownerId: userId },
+      where: { ownerId: { in: teamMemberIds } },
       include: {
         _count: {
           select: { scans: true }
+        },
+        owner: {
+          select: { email: true }
         }
       },
       orderBy: {
@@ -99,7 +111,7 @@ router.get('/stats', auth, async (req: AuthReq, res) => {
     // Get device analytics (based on user agents)
     const scansWithUA = await prisma.scan.findMany({
       where: {
-        qr: { ownerId: userId },
+        qr: { ownerId: { in: teamMemberIds } },
         createdAt: { gte: startOfMonth }
       },
       select: { ua: true }
@@ -136,16 +148,28 @@ router.get('/stats', auth, async (req: AuthReq, res) => {
       }
     ];
 
-    // Get geographic data from real scan locations using raw query
-    const locationScansRaw = await prisma.$queryRaw<{country: string, count: bigint}[]>`
-      SELECT country, COUNT(*) as count
-      FROM "Scan" s
-      JOIN "QrCode" qr ON s."qrId" = qr.id
-      WHERE qr."ownerId" = ${userId} AND s.country IS NOT NULL
-      GROUP BY country
-      ORDER BY count DESC
-      LIMIT 5
-    `;
+    // Get geographic data using safe Prisma ORM aggregation
+    const locationScans = await prisma.scan.groupBy({
+      by: ['country'],
+      where: {
+        qr: { ownerId: { in: teamMemberIds } },
+        country: { not: null }
+      },
+      _count: {
+        id: true
+      },
+      orderBy: {
+        _count: {
+          id: 'desc'
+        }
+      },
+      take: 5
+    });
+    
+    const locationScansRaw = locationScans.map(scan => ({
+      country: scan.country!,
+      count: BigInt(scan._count.id)
+    }));
 
     // Map country names to flag emojis
     const countryFlags: { [key: string]: string } = {
@@ -177,28 +201,26 @@ router.get('/stats', auth, async (req: AuthReq, res) => {
       flag: countryFlags[location.country || ''] || '🌍'
     }));
 
-    // Get recent activity with location data using raw query to avoid TypeScript issues
-    const recentActivity = await prisma.$queryRaw<Array<{
-      id: string;
-      createdAt: Date;
-      country: string | null;
-      city: string | null;
-      qr_name: string | null;
-      qr_slug: string | null;
-    }>>`
-      SELECT 
-        s.id, 
-        s."createdAt", 
-        s.country, 
-        s.city,
-        qr.name as qr_name,
-        qr.slug as qr_slug
-      FROM \"Scan\" s
-      JOIN \"QrCode\" qr ON s.\"qrId\" = qr.id
-      WHERE qr.\"ownerId\" = ${userId}
-      ORDER BY s."createdAt" DESC
-      LIMIT 5
-    `;
+    // Get recent activity using safe Prisma ORM queries
+    const recentActivity = await prisma.scan.findMany({
+      where: {
+        qr: { ownerId: { in: teamMemberIds } }
+      },
+      select: {
+        id: true,
+        createdAt: true,
+        country: true,
+        city: true,
+        qr: {
+          select: {
+            name: true,
+            slug: true
+          }
+        }
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 5
+    });
 
 
     console.log('Recent activity with location:', recentActivity);
@@ -218,7 +240,7 @@ router.get('/stats', auth, async (req: AuthReq, res) => {
 
     const formattedActivity = recentActivity.map((activity) => ({
       action: 'QR Code scanned',
-      qr: activity.qr_name || 'Unnamed QR Code',
+      qr: activity.qr.name || 'Unnamed QR Code',
       time: formatTimeAgo(activity.createdAt),
       location: activity.city && activity.country 
         ? `${activity.city}, ${activity.country}`
@@ -234,7 +256,7 @@ router.get('/stats', auth, async (req: AuthReq, res) => {
     
     const qrCodesLastMonth = await prisma.qrCode.count({
       where: { 
-        ownerId: userId,
+        ownerId: { in: teamMemberIds },
         createdAt: { 
           gte: startOfLastMonth,
           lt: startOfMonth
@@ -244,7 +266,7 @@ router.get('/stats', auth, async (req: AuthReq, res) => {
 
     const scansLastMonth = await prisma.scan.count({
       where: {
-        qr: { ownerId: userId },
+        qr: { ownerId: { in: teamMemberIds } },
         createdAt: { 
           gte: startOfLastMonth,
           lt: startOfMonth
@@ -256,7 +278,7 @@ router.get('/stats', auth, async (req: AuthReq, res) => {
     const uniqueVisitorsLastMonth = await prisma.scan.groupBy({
       by: ['ip'],
       where: {
-        qr: { ownerId: userId },
+        qr: { ownerId: { in: teamMemberIds } },
         createdAt: { 
           gte: startOfLastMonth,
           lt: startOfMonth
@@ -332,15 +354,27 @@ router.get('/stats', auth, async (req: AuthReq, res) => {
 
 // GET /qr/my-codes (get all user's QR codes)
 router.get('/my-codes', auth, async (req: AuthReq, res) => {
-  const qrCodes = await prisma.qrCode.findMany({
-    where: { ownerId: req.user!.id },
-    include: {
-      _count: {
-        select: { scans: true }
-      }
-    },
-    orderBy: { createdAt: 'desc' }
-  });
+  try {
+    // Get team member IDs to show all team QR codes
+    const teamMemberIds = await getTeamMemberIds(req.user!.id);
+    
+    // Validate team member IDs for security
+    if (!teamMemberIds.every(id => typeof id === 'string' && id.length >= 8 && /^[a-zA-Z0-9]+$/.test(id))) {
+      throw new Error('Invalid team member ID detected');
+    }
+    
+    const qrCodes = await prisma.qrCode.findMany({
+      where: { ownerId: { in: teamMemberIds } },
+      include: {
+        _count: {
+          select: { scans: true }
+        },
+        owner: {
+          select: { email: true }
+        }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
 
   // Transform the data to match frontend expectations
   const transformedQrCodes = qrCodes.map(qr => ({
@@ -357,6 +391,8 @@ router.get('/my-codes', auth, async (req: AuthReq, res) => {
     bulk: qr.bulk,
     format: qr.format,
     errorCorrection: qr.errorCorrection,
+    owner: qr.owner.email,
+    isOwner: qr.ownerId === req.user!.id, // To show different UI for owned vs team items
     designOptions: (qr.designFrame || qr.designShape || qr.designLogo || qr.designLevel !== 2 || qr.designDotStyle || qr.designBgColor || qr.designOuterBorder) ? {
       frame: qr.designFrame || 1,
       shape: qr.designShape || 1,
@@ -369,6 +405,10 @@ router.get('/my-codes', auth, async (req: AuthReq, res) => {
   }));
 
   res.json(transformedQrCodes);
+  } catch (error) {
+    console.error('Error fetching QR codes:', error);
+    res.status(500).json({ error: 'Failed to fetch QR codes' });
+  }
 });
 
 // POST /qr/url  (create)

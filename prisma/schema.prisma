@@ -18,6 +18,7 @@ model User {
   passwordResetToken        String?   @unique
   passwordResetExpires      DateTime?
   role                      String    @default("admin")
+  invitedBy                 String?   // ID of the user who invited this user
   
   // User preferences
   language                  String    @default("en")
@@ -30,6 +31,25 @@ model User {
   qrCodes      QrCode[]
   templates    Template[]
   refreshTokens RefreshToken[]
+  sentInvitations Invitation[] @relation("InvitedBy")
+}
+
+model Invitation {
+  id          String    @id @default(cuid())
+  email       String
+  role        String    // admin, editor, viewer
+  token       String    @unique
+  expiresAt   DateTime
+  used        Boolean   @default(false)
+  invitedBy   String
+  inviter     User      @relation("InvitedBy", fields: [invitedBy], references: [id], onDelete: Cascade)
+  
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([email, invitedBy])
+  @@index([email])
+  @@index([token])
 }
 
 model RefreshToken {
