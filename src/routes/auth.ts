@@ -16,6 +16,46 @@ import { verifyEmailWithKickbox, isEmailAcceptable } from '../lib/kickbox.js';
 const router = Router();
 const googleClient = new OAuth2Client(env.GOOGLE_CLIENT_ID);
 
+// GET /auth/invitation/:token - Get invitation details
+router.get('/invitation/:token', async (req, res) => {
+  try {
+    const { token } = req.params;
+
+    const invitation = await prisma.invitation.findUnique({
+      where: { token },
+      include: {
+        inviter: {
+          select: {
+            email: true
+          }
+        }
+      }
+    });
+
+    if (!invitation) {
+      return res.status(404).json({ error: 'Invalid invitation' });
+    }
+
+    if (invitation.used) {
+      return res.status(400).json({ error: 'Invitation already used' });
+    }
+
+    if (invitation.expiresAt < new Date()) {
+      return res.status(400).json({ error: 'Invitation has expired' });
+    }
+
+    res.json({
+      email: invitation.email,
+      role: invitation.role,
+      inviterName: invitation.inviter.email.split('@')[0],
+      expiresAt: invitation.expiresAt
+    });
+  } catch (error) {
+    console.error('Error validating invitation:', error);
+    res.status(500).json({ error: 'Failed to validate invitation' });
+  }
+});
+
 // POST /auth/verify-email - Verify email address with Kickbox (real-time validation)
 router.post('/verify-email', async (req, res) => {
   try {
@@ -70,7 +110,7 @@ router.post('/verify-email', async (req, res) => {
 // POST /auth/signup - User registration with automatic login
 router.post('/signup', async (req, res) => {
   try {
-    const { email, password } = req.body ?? {};
+    const { email, password, inviteToken } = req.body ?? {};
     if (!email || !password) {
       return res.status(400).json({ error: 'Email and password are required' });
     }
@@ -86,15 +126,54 @@ router.post('/signup', async (req, res) => {
       return res.status(400).json({ error: 'Password must be at least 8 characters long' });
     }
 
-    // Verify email with Kickbox
-    const kickboxResult = await verifyEmailWithKickbox(email);
-    const emailCheck = isEmailAcceptable(kickboxResult);
-    
-    if (!emailCheck.isValid) {
-      return res.status(400).json({ 
-        error: emailCheck.message,
-        suggestion: emailCheck.suggestion,
+    let userRole: string;
+    let invitedBy: string | null = null;
+
+    // Handle invitation token if provided
+    if (inviteToken) {
+      const invitation = await prisma.invitation.findUnique({
+        where: { token: inviteToken }
       });
+
+      if (!invitation) {
+        return res.status(400).json({ error: 'Invalid or expired invitation' });
+      }
+
+      if (invitation.used) {
+        return res.status(400).json({ error: 'Invitation already used' });
+      }
+
+      if (invitation.expiresAt < new Date()) {
+        return res.status(400).json({ error: 'Invitation has expired' });
+      }
+
+      if (invitation.email.toLowerCase() !== email.toLowerCase()) {
+        return res.status(400).json({ error: 'Email does not match invitation' });
+      }
+
+      userRole = invitation.role;
+      invitedBy = invitation.invitedBy;
+
+      // Mark invitation as used
+      await prisma.invitation.update({
+        where: { id: invitation.id },
+        data: { used: true }
+      });
+    } else {
+      // Check if this is the first user (should be admin)
+      const userCount = await prisma.user.count();
+      userRole = userCount === 0 ? 'admin' : 'user';
+
+      // Verify email with Kickbox for non-invited users
+      const kickboxResult = await verifyEmailWithKickbox(email);
+      const emailCheck = isEmailAcceptable(kickboxResult);
+      
+      if (!emailCheck.isValid) {
+        return res.status(400).json({ 
+          error: emailCheck.message,
+          suggestion: emailCheck.suggestion,
+        });
+      }
     }
 
     const exists = await prisma.user.findUnique({ where: { email } });
@@ -108,12 +187,14 @@ router.post('/signup', async (req, res) => {
       data: {
         email,
         password: hashed,
+        role: userRole,
+        invitedBy,
         emailVerified: true, // Skip email verification for direct login
       },
     });
 
     // Generate access token and refresh token for immediate login
-    const accessToken = signJwt({ id: user.id, email: user.email });
+    const accessToken = signJwt({ id: user.id, email: user.email, role: user.role });
     const refreshToken = generateToken();
     const refreshTokenExpiry = new Date();
     refreshTokenExpiry.setDate(refreshTokenExpiry.getDate() + 30); // 30 days
@@ -171,7 +252,7 @@ router.post('/login', async (req, res) => {
     }
 
     // Generate access token and refresh token
-    const accessToken = signJwt({ id: user.id, email: user.email });
+    const accessToken = signJwt({ id: user.id, email: user.email, role: user.role });
     const refreshToken = generateToken();
     const refreshTokenExpiry = new Date();
     refreshTokenExpiry.setDate(refreshTokenExpiry.getDate() + 30); // 30 days
@@ -271,12 +352,16 @@ router.post('/google', async (req: Request, res: Response) => {
       const defaultPassword = Math.random().toString(36).slice(-8);
       const hashedPassword = await hashPassword(defaultPassword);
 
+      // Check if this is the first user (should be admin)
+      const userCount = await prisma.user.count();
+      const userRole = userCount === 0 ? 'admin' : 'user';
+
       user = await prisma.user.create({
         data: {
           email,
           password: hashedPassword,
           emailVerified: email_verified || false,
-          role: 'user',
+          role: userRole,
         },
       });
     } else if (!user.emailVerified && email_verified) {

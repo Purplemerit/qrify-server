@@ -8,6 +8,7 @@ import qrRoutes from './routes/qr.js';
 import scanRoutes from './routes/scan.js';
 import templateRoutes from './routes/template.js';
 import contactRoutes from './routes/contact.js';
+import usersRoutes from './routes/users.js';
 
 const app = express();
 
@@ -30,7 +31,8 @@ app.get('/', (_req, res) => {
       qr: '/qr',
       templates: '/templates',
       scan: '/scan',
-      contact: '/contact'
+      contact: '/contact',
+      users: '/users'
     }
   });
 });
@@ -42,6 +44,7 @@ app.use('/qr', qrRoutes);
 app.use('/templates', templateRoutes);
 app.use('/scan', scanRoutes); // public
 app.use('/contact', contactRoutes); // public
+app.use('/users', usersRoutes);
 
 app.listen(env.PORT, () => {
   console.log(`API running on http://localhost:${env.PORT}`);

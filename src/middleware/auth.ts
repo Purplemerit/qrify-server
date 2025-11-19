@@ -2,7 +2,7 @@ import { type Request, type Response, type NextFunction } from 'express';
 import { verifyJwt } from '../lib/jwt.js';
 
 export type AuthReq = Request & {
-  user?: { id: string; email: string };
+  user?: { id: string; email: string; role?: string };
 };
 
 export function auth(req: AuthReq, res: Response, next: NextFunction) {
@@ -27,7 +27,7 @@ export function auth(req: AuthReq, res: Response, next: NextFunction) {
     if (!userId) {
       return res.status(401).json({ error: 'Invalid token payload' });
     }
-    req.user = { id: userId, email: payload.email };
+    req.user = { id: userId, email: payload.email, role: payload.role };
     next();
   } catch {
     return res.status(401).json({ error: 'Invalid token' });

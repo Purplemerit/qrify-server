@@ -149,3 +149,63 @@ export async function sendEmailChangeVerificationEmail(newEmail: string, token: 
 
   await sendEmail(newEmail, 'Verify Your New Email - QRIfy', html);
 }
+
+export async function sendInvitationEmail(
+  email: string, 
+  inviterName: string, 
+  role: string, 
+  token: string
+): Promise<void> {
+  const inviteUrl = `${emailConfig.baseUrl}/signup?invite=${token}`;
+  
+  const roleDescription = {
+    admin: 'Full access to all features and settings',
+    editor: 'Can create and manage QR codes, limited settings access',
+    viewer: 'Read-only access to QR codes and analytics'
+  }[role.toLowerCase()] || 'Access to QRify';
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <title>You're Invited to QRify</title>
+    </head>
+    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+      <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+        <h1 style="color: white; margin: 0;">🎉 You're Invited to QRify!</h1>
+      </div>
+      <div style="background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px;">
+        <h2 style="color: #333; margin-top: 0;">Welcome to the team!</h2>
+        <p><strong>${inviterName}</strong> has invited you to join their QRify team.</p>
+        
+        <p>You've been assigned the role of:</p>
+        <div style="background: #e5f3ff; color: #1e40af; padding: 8px 16px; border-radius: 16px; display: inline-block; font-weight: 600; margin: 10px 0;">
+          ${role.toUpperCase()}
+        </div>
+        <p style="color: #666; font-style: italic;">${roleDescription}</p>
+        
+        <p>Click the button below to activate your account and get started:</p>
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="${inviteUrl}" style="background: #10b981; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; display: inline-block; font-weight: 600; font-size: 16px;">Activate Account</a>
+        </div>
+        
+        <div style="background: #fef2f2; border-left: 4px solid #ef4444; padding: 12px; margin: 20px 0;">
+          <strong>Note:</strong> This invitation link will expire in 7 days. If you don't activate your account by then, you'll need to request a new invitation.
+        </div>
+        
+        <p style="color: #666; font-size: 14px;">Already have an account? You can sign in directly and your new role will be applied automatically.</p>
+        
+        <p style="color: #666; font-size: 14px;">Or copy and paste this link into your browser:</p>
+        <p style="background: #e9ecef; padding: 10px; border-radius: 5px; word-break: break-all; font-size: 12px;">${inviteUrl}</p>
+      </div>
+      <div style="text-align: center; margin-top: 20px; color: #999; font-size: 12px;">
+        <p>&copy; ${new Date().getFullYear()} QRIfy. All rights reserved.</p>
+        <p>If you weren't expecting this invitation, you can safely ignore this email.</p>
+      </div>
+    </body>
+    </html>
+  `;
+  
+  await sendEmail(email, `You're invited to join ${inviterName}'s QRify team`, html);
+}
