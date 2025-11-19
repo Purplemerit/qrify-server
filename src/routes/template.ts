@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../prisma.js';
 import { auth, type AuthReq } from '../middleware/auth.js';
+import { getTeamMemberIds } from '../lib/team.js';
 
 const router = Router();
 
@@ -34,7 +35,7 @@ const updateTemplateSchema = z.object({
   }).optional()
 });
 
-// GET /templates - Get all templates for the authenticated user
+// GET /templates - Get all templates for the authenticated user and team
 router.get('/', auth, async (req: AuthReq, res) => {
   try {
     if (!req.user) {
@@ -42,10 +43,13 @@ router.get('/', auth, async (req: AuthReq, res) => {
     }
     
     const userId = req.user.id;
+    
+    // Get team member IDs to show all team templates
+    const teamMemberIds = await getTeamMemberIds(userId);
 
     const templates = await prisma.template.findMany({
       where: {
-        ownerId: userId
+        ownerId: { in: teamMemberIds }
       },
       select: {
         id: true,
@@ -59,7 +63,11 @@ router.get('/', auth, async (req: AuthReq, res) => {
         designBgColor: true,
         designOuterBorder: true,
         createdAt: true,
-        updatedAt: true
+        updatedAt: true,
+        ownerId: true,
+        owner: {
+          select: { email: true }
+        }
       },
       orderBy: {
         createdAt: 'desc'
@@ -71,6 +79,8 @@ router.get('/', auth, async (req: AuthReq, res) => {
       id: template.id,
       name: template.name,
       description: template.description,
+      owner: template.owner.email,
+      isOwner: template.ownerId === userId, // To show different UI for owned vs team items
       designOptions: {
         frame: template.designFrame,
         shape: template.designShape,
