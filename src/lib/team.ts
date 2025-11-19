@@ -8,86 +8,125 @@ export interface TeamMember {
 }
 
 /**
- * Get all team members for a user
+ * Validate user ID format for security
+ */
+function validateUserId(userId: string): void {
+  if (!userId || typeof userId !== 'string' || userId.length < 8 || !/^[a-zA-Z0-9]+$/.test(userId)) {
+    throw new Error('Invalid user ID format');
+  }
+}
+
+/**
+ * Get all team members for a user using safe Prisma ORM methods
  * A team consists of:
  * - The admin user (first user with no invitedBy)
  * - All users invited by the admin
  * - All users invited by editors/viewers (if any)
  */
 export async function getTeamMembers(userId: string): Promise<TeamMember[]> {
-  // Use raw query to avoid TypeScript issues with invitedBy field
-  const user = await prisma.$queryRaw<TeamMember[]>`
-    SELECT id, email, role, "invitedBy"
-    FROM "User"
-    WHERE id = ${userId}
-  `;
+  validateUserId(userId);
 
-  if (!user || user.length === 0) {
-    throw new Error('User not found');
-  }
+  try {
+    // Use safe Prisma ORM query instead of raw SQL
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        invitedBy: true
+      }
+    });
 
-  const currentUser = user[0];
-  let teamMembers: TeamMember[] = [];
+    if (!user) {
+      throw new Error('User not found');
+    }
 
-  if (currentUser.role === 'admin' && !currentUser.invitedBy) {
-    // This user is the main admin, get all users they invited
-    const allUsers = await prisma.$queryRaw<TeamMember[]>`
-      SELECT id, email, role, "invitedBy"
-      FROM "User"
-      WHERE "invitedBy" = ${currentUser.id} OR id = ${currentUser.id}
-    `;
-    teamMembers = allUsers;
-  } else {
-    // This user was invited by someone, find the admin and get all team members
-    let adminId: string | null = null;
+    let teamMembers: TeamMember[] = [];
 
-    if (currentUser.invitedBy) {
-      // Find the admin by traversing up the invitation chain
-      const adminResult = await prisma.$queryRaw<{ id: string }[]>`
-        WITH RECURSIVE invitation_chain AS (
-          -- Base case: current user
-          SELECT id, email, role, "invitedBy"
-          FROM "User"
-          WHERE id = ${currentUser.invitedBy}
-          
-          UNION ALL
-          
-          -- Recursive case: follow the invitation chain
-          SELECT u.id, u.email, u.role, u."invitedBy"
-          FROM "User" u
-          INNER JOIN invitation_chain ic ON u.id = ic."invitedBy"
-          WHERE u."invitedBy" IS NOT NULL
-        )
-        SELECT id
-        FROM invitation_chain
-        WHERE role = 'admin' AND "invitedBy" IS NULL
-        LIMIT 1
-      `;
+    // Check if this user is the original admin (no invitedBy field)
+    if (user.role === 'admin' && !user.invitedBy) {
+      // This user is the main admin, get all users they invited plus themselves
+      const allUsers = await prisma.user.findMany({
+        where: {
+          OR: [
+            { invitedBy: user.id },
+            { id: user.id }
+          ]
+        },
+        select: {
+          id: true,
+          email: true,
+          role: true,
+          invitedBy: true
+        }
+      });
+      teamMembers = allUsers;
+    } else {
+      // This user was invited by someone, find the admin by traversing the chain
+      let adminId: string | null = null;
+      let currentUser = user;
+      
+      // Traverse up the invitation chain safely (max 10 levels to prevent infinite loops)
+      let depth = 0;
+      while (currentUser.invitedBy && depth < 10) {
+        validateUserId(currentUser.invitedBy);
+        
+        const inviter = await prisma.user.findUnique({
+          where: { id: currentUser.invitedBy },
+          select: {
+            id: true,
+            email: true,
+            role: true,
+            invitedBy: true
+          }
+        });
+        
+        if (!inviter) break;
+        
+        // Check if this is the original admin
+        if (inviter.role === 'admin' && !inviter.invitedBy) {
+          adminId = inviter.id;
+          break;
+        }
+        
+        currentUser = inviter;
+        depth++;
+      }
 
-      if (adminResult.length > 0) {
-        adminId = adminResult[0].id;
+      if (adminId) {
+        validateUserId(adminId);
+        // Get all team members under this admin
+        const allUsers = await prisma.user.findMany({
+          where: {
+            OR: [
+              { invitedBy: adminId },
+              { id: adminId }
+            ]
+          },
+          select: {
+            id: true,
+            email: true,
+            role: true,
+            invitedBy: true
+          }
+        });
+        teamMembers = allUsers;
+      } else {
+        // Fallback: just return the current user
+        teamMembers = [user];
       }
     }
 
-    if (adminId) {
-      // Get all team members under this admin
-      const allUsers = await prisma.$queryRaw<TeamMember[]>`
-        SELECT id, email, role, "invitedBy"
-        FROM "User"
-        WHERE "invitedBy" = ${adminId} OR id = ${adminId}
-      `;
-      teamMembers = allUsers;
-    } else {
-      // Fallback: just return the current user
-      teamMembers = [currentUser];
-    }
+    return teamMembers;
+  } catch (error) {
+    console.error('Error getting team members:', error);
+    throw new Error('Failed to get team members');
   }
-
-  return teamMembers;
 }
 
 /**
- * Get all team member IDs for a user
+ * Get all team member IDs for a user using safe Prisma ORM methods
  */
 export async function getTeamMemberIds(userId: string): Promise<string[]> {
   const teamMembers = await getTeamMembers(userId);
@@ -95,10 +134,13 @@ export async function getTeamMemberIds(userId: string): Promise<string[]> {
 }
 
 /**
- * Check if two users are in the same team
+ * Check if two users are in the same team using safe Prisma ORM methods
  */
 export async function areTeamMembers(userId1: string, userId2: string): Promise<boolean> {
   try {
+    validateUserId(userId1);
+    validateUserId(userId2);
+    
     const team1Ids = await getTeamMemberIds(userId1);
     return team1Ids.includes(userId2);
   } catch (error) {

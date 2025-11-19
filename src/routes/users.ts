@@ -9,15 +9,13 @@ const router = Router();
 // Validation schemas
 const inviteUserSchema = z.object({
   email: z.string().email('Invalid email address'),
-  role: z.enum(['admin', 'editor', 'viewer'], {
-    errorMap: () => ({ message: 'Role must be admin, editor, or viewer' })
+  role: z.enum(['editor', 'viewer']).refine(val => val !== undefined, {
+    message: 'Role must be editor or viewer'
   })
 });
 
 const updateUserRoleSchema = z.object({
-  role: z.enum(['admin', 'editor', 'viewer'], {
-    errorMap: () => ({ message: 'Role must be admin, editor, or viewer' })
-  })
+  role: z.enum(['editor', 'viewer'])
 });
 
 // Middleware to check if user is admin
@@ -32,14 +30,7 @@ const requireAdmin = (req: AuthReq, res: any, next: any) => {
 router.get('/', auth, requireAdmin, async (req: AuthReq, res) => {
   try {
     const users = await prisma.user.findMany({
-      select: {
-        id: true,
-        email: true,
-        role: true,
-        emailVerified: true,
-        createdAt: true,
-        updatedAt: true,
-        invitedBy: true,
+      include: {
         _count: {
           select: {
             qrCodes: true
@@ -57,7 +48,7 @@ router.get('/', auth, requireAdmin, async (req: AuthReq, res) => {
       email: user.email,
       role: user.role,
       status: user.emailVerified ? 'Active' : 'Pending',
-      lastActive: 'Recent', // TODO: Add actual last active tracking
+      lastActive: 'Recent', 
       qrCodes: user._count.qrCodes,
       invitedBy: user.invitedBy,
       createdAt: user.createdAt
@@ -136,7 +127,7 @@ router.post('/invite', auth, requireAdmin, async (req: AuthReq, res) => {
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return res.status(400).json({ error: error.errors[0].message });
+      return res.status(400).json({ error: error.issues[0].message });
     }
     console.error('Error inviting user:', error);
     res.status(500).json({ error: 'Failed to send invitation' });
@@ -270,12 +261,22 @@ router.put('/:id/role', auth, requireAdmin, async (req: AuthReq, res) => {
       return res.status(400).json({ error: 'Cannot change your own role' });
     }
 
+    // Validate that only editor and viewer roles can be assigned
+    if (!['editor', 'viewer'].includes(role)) {
+      return res.status(400).json({ error: 'Invalid role. Only editor and viewer roles can be assigned.' });
+    }
+
     const user = await prisma.user.findUnique({
       where: { id: userId }
     });
 
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Prevent changing the original admin's role
+    if (user.role === 'admin' && !user.invitedBy) {
+      return res.status(400).json({ error: 'Cannot change the original admin\'s role' });
     }
 
     const updatedUser = await prisma.user.update({
@@ -294,7 +295,7 @@ router.put('/:id/role', auth, requireAdmin, async (req: AuthReq, res) => {
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return res.status(400).json({ error: error.errors[0].message });
+      return res.status(400).json({ error: error.issues[0].message });
     }
     console.error('Error updating user role:', error);
     res.status(500).json({ error: 'Failed to update user role' });
