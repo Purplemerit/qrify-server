@@ -214,6 +214,7 @@ router.post('/signup', async (req, res) => {
       secure: process.env.NODE_ENV === 'production', // HTTPS in production
       sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // Allow cross-origin
       maxAge: 15 * 60 * 1000, // 15 minutes
+      path: '/',
     });
 
     res.cookie('refreshToken', refreshToken, {
@@ -221,6 +222,7 @@ router.post('/signup', async (req, res) => {
       secure: process.env.NODE_ENV === 'production', // HTTPS in production
       sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // Allow cross-origin
       maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+      path: '/',
     });
 
     res.status(201).json({
@@ -273,6 +275,7 @@ router.post('/login', async (req, res) => {
       secure: process.env.NODE_ENV === 'production', // HTTPS in production
       sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // Allow cross-origin
       maxAge: 15 * 60 * 1000, // 15 minutes
+      path: '/',
     });
 
     
@@ -281,6 +284,7 @@ router.post('/login', async (req, res) => {
       secure: process.env.NODE_ENV === 'production', // HTTPS in production
       sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // Allow cross-origin
       maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+      path: '/',
     });
 
 
@@ -372,24 +376,45 @@ router.post('/google', async (req: Request, res: Response) => {
       });
     }
 
-    // Generate JWT token
-    const token = signJwt({
+    // Generate access token and refresh token
+    const accessToken = signJwt({
       id: user.id,
       email: user.email,
       role: user.role,
     });
 
-    // Set secure cookie
-    res.cookie('token', token, {
+    const refreshToken = generateToken();
+    const refreshTokenExpiry = new Date();
+    refreshTokenExpiry.setDate(refreshTokenExpiry.getDate() + 30); // 30 days
+
+    // Store refresh token in database
+    await prisma.refreshToken.create({
+      data: {
+        token: refreshToken,
+        userId: user.id,
+        expiresAt: refreshTokenExpiry,
+      },
+    });
+
+    // Set secure httpOnly cookies
+    res.cookie('accessToken', accessToken, {
       httpOnly: true,
-      secure: env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+      maxAge: 15 * 60 * 1000, // 15 minutes
+      path: '/',
+    });
+
+    res.cookie('refreshToken', refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+      path: '/',
     });
 
     res.json({
       message: 'Google authentication successful',
-      token,
       user: {
         id: user.id,
         email: user.email,
@@ -424,12 +449,14 @@ router.post('/logout', auth, async (req: AuthReq, res: Response) => {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+      path: '/',
     });
 
     res.clearCookie('refreshToken', {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+      path: '/',
     });
 
     res.json({ message: 'Logged out successfully' });
@@ -476,6 +503,7 @@ router.post('/refresh', async (req, res) => {
       secure: process.env.NODE_ENV === 'production',
       sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
       maxAge: 15 * 60 * 1000, // 15 minutes
+      path: '/',
     });
 
     res.json({ message: 'Token refreshed successfully' });
