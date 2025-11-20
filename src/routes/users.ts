@@ -26,10 +26,16 @@ const requireAdmin = (req: AuthReq, res: any, next: any) => {
   next();
 };
 
-// GET /users - Get all users (admin only)
+// GET /users - Get current admin and all users invited by them (admin only)
 router.get('/', auth, requireAdmin, async (req: AuthReq, res) => {
   try {
     const users = await prisma.user.findMany({
+      where: {
+        OR: [
+          { id: req.user!.id }, // Include current admin
+          { invitedBy: req.user!.id } // Include users invited by current admin
+        ]
+      },
       include: {
         _count: {
           select: {
