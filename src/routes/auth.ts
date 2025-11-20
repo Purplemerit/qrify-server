@@ -353,12 +353,12 @@ router.post('/google', async (req: Request, res: Response) => {
 
     // If user doesn't exist, create new user
     if (!user) {
-      const defaultPassword = Math.random().toString(36).slice(-8);
-      const hashedPassword = await hashPassword(defaultPassword);
-
       // Check if this is the first user (should be admin)
       const userCount = await prisma.user.count();
       const userRole = userCount === 0 ? 'admin' : 'user';
+      
+      const defaultPassword = Math.random().toString(36).slice(-8);
+      const hashedPassword = await hashPassword(defaultPassword);
 
       user = await prisma.user.create({
         data: {
