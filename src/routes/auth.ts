@@ -353,9 +353,10 @@ router.post('/google', async (req: Request, res: Response) => {
 
     // If user doesn't exist, create new user
     if (!user) {
-      // Check if this is the first user (should be admin)
+      // For Google OAuth, assign admin role to new users
+      // (since Google OAuth is typically used for organizational accounts)
       const userCount = await prisma.user.count();
-      const userRole = userCount === 0 ? 'admin' : 'user';
+      const userRole = userCount === 0 ? 'admin' : 'admin'; // All Google OAuth users get admin role
       
       const defaultPassword = Math.random().toString(36).slice(-8);
       const hashedPassword = await hashPassword(defaultPassword);
