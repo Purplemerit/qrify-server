@@ -150,7 +150,7 @@ router.get('/stats', auth, async (req: AuthReq, res) => {
 
     // Get geographic data using safe Prisma ORM aggregation
     const locationScans = await prisma.scan.groupBy({
-      by: ['country'],
+      by: ['country', 'city'],
       where: {
         qr: { ownerId: { in: teamMemberIds } },
         country: { not: null }
@@ -163,11 +163,12 @@ router.get('/stats', auth, async (req: AuthReq, res) => {
           id: 'desc'
         }
       },
-      take: 5
+      take: 10
     });
     
     const locationScansRaw = locationScans.map(scan => ({
       country: scan.country!,
+      city: scan.city || undefined,
       count: BigInt(scan._count.id)
     }));
 
@@ -197,6 +198,7 @@ router.get('/stats', auth, async (req: AuthReq, res) => {
 
     const topLocations = locationScansRaw.map(location => ({
       country: location.country || 'Unknown',
+      city: location.city || undefined,
       scans: Number(location.count),
       flag: countryFlags[location.country || ''] || '🌍'
     }));
